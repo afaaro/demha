@@ -29,6 +29,19 @@ return [
         'permission' => 'tools.admin.database.manage',
     ],
 
+    'tools/admin/logs' => [
+        'controller' => 'tools/admin/logs',
+        'action' => 'index',
+        'auth' => true,
+        'permission' => 'tools.admin.database.manage',
+    ],
+    'tools/admin/logs/clear' => [
+        'controller' => 'tools/admin/logs',
+        'action' => 'clear',
+        'auth' => true,
+        'permission' => 'tools.admin.database.manage',
+    ],
+
     'tools/admin/module' => [
         'controller' => 'tools/admin/module',
         'action' => 'index',

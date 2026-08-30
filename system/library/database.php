@@ -45,15 +45,7 @@ class Database
     public function query(string $sql, array $params = [], int $fetchMode = PDO::FETCH_ASSOC): object
     {
         $sql = $this->replacePrefix($sql);
-        $result = (object) [
-            'sql'       => $sql,
-            'row'       => [],
-            'rows'      => [],
-            'num_rows'  => 0,
-            'affected'  => 0,
-            'value'     => null,
-            'pairs'     => [],
-        ];
+        $result = new QueryResult($sql);
 
         $stmt = $this->pdo->prepare($sql);
 
@@ -358,5 +350,24 @@ class Database
             return $this->pdo->$name(...$arguments);
         }
         throw new BadMethodCallException("Call to undefined method Database::{$name}()");
+    }
+}
+
+class QueryResult
+{
+    public array $row = [];
+    public array $rows = [];
+    public int $num_rows = 0;
+    public int $affected = 0;
+    public mixed $value = null;
+    public array $pairs = [];
+
+    public function __construct(public string $sql = '')
+    {
+    }
+
+    public function affectedRows(): int
+    {
+        return $this->affected;
     }
 }

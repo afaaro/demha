@@ -49,7 +49,7 @@ class ShopAdminCategory extends Controller
     {
         if ($this->request->isPost()) {
             $rules = [
-                'name'        => 'required|min:2|exists:shop_categories,name',
+                'name'        => 'required|min:2|unique:shop_categories,name',
                 'parent_id'   => 'integer',
                 'sort_order'  => 'integer',
                 'status'      => 'required|in:1,0',

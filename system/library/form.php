@@ -121,22 +121,35 @@ class Form {
 
     public function csrfField(?string $formId = null): string
     {
-        $id = $formId ?? $this->formId;
-        $token = bin2hex(random_bytes(32));
+        return '<input type="hidden" name="_token" value="' . escape($this->getToken($formId)) . '">';
+    }
+
+    public function getToken(?string $formId = null): string
+    {
+        $id = $formId !== null && $formId !== '' ? $formId : $this->formId;
         $bucket = '_csrf.' . $id;
-
-        $tokens = (array)$this->session->get($bucket, []);
+        $tokens = (array) $this->session->get($bucket, []);
         $tokens = array_filter($tokens, fn($expiry) => $expiry >= time());
-        $tokens[$token] = time() + 3600;
-        $this->session->set($bucket, $tokens);
 
-        return '<input type="hidden" name="_token" value="' . escape($token) . '">';
+        if (empty($tokens)) {
+            $token = bin2hex(random_bytes(32));
+            $tokens[$token] = time() + 3600;
+            $this->session->set($bucket, $tokens);
+            return $token;
+        }
+
+        $this->session->set($bucket, $tokens);
+        $keys = array_keys($tokens);
+        return (string) $keys[0];
     }
 
     public function checkToken(?string $token = null, ?string $formId = null): bool
     {
         $id = $formId ?? $this->formId;
-        $token = $token ?? (string)$this->request()?->post('_token', 'raw', '');
+        if ($token === null || $token === '') {
+            $request = $this->request();
+            $token = (string) ($request?->post('_token', 'raw', '') ?: $request?->post('csrf_token', 'raw', ''));
+        }
 
         if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
             return false;
@@ -179,21 +192,44 @@ class Form {
             return false;
         }
 
-        // Get all POST data
         $this->submittedData = $this->getAllPostData();
-
-        // Validate against rules
-        $errors = $this->validateData($this->submittedData);
-        $this->errors = $errors;
+        $errors = $this->validate($this->submittedData);
 
         if (!empty($errors)) {
-            $this->flashInput($this->submittedData);
-            $this->flashErrors($errors);
             return false;
         }
 
         $this->validated = $this->submittedData;
         return true;
+    }
+
+    /**
+     * Validate an arbitrary data array against rules.
+     * Returns field => message errors (empty array means valid).
+     */
+    public function validate(array $data, ?array $rules = null, ?array $messages = null): array
+    {
+        if ($rules !== null) {
+            $this->rules = $rules;
+        }
+
+        if ($messages !== null) {
+            $this->messages = array_merge($this->defaultMessages, $messages);
+        }
+
+        $errors = $this->validateData($data);
+        $this->errors = $errors;
+
+        if (!empty($errors)) {
+            $this->flashInput($data);
+            $this->flashErrors($errors);
+        } else {
+            $this->clearOldInput();
+            $this->clearFlashedErrors();
+            $this->validated = $data;
+        }
+
+        return $errors;
     }
 
     public function validated(?string $field = null, mixed $default = null): mixed
@@ -648,13 +684,9 @@ class Form {
 
             foreach ($rules as $rule) {
                 $param = null;
-                $exceptId = null;
 
                 if (str_contains($rule, ':')) {
                     [$rule, $paramStr] = explode(':', $rule, 2);
-                    if ($rule === 'unique' && str_contains($paramStr, ',')) {
-                        [$paramStr, $exceptId] = explode(',', $paramStr, 2);
-                    }
                     $param = $paramStr;
                 }
 
@@ -687,6 +719,11 @@ class Form {
 
                     case 'numeric':
                         $pass = $value === null || $value === '' || is_numeric($value);
+                        break;
+
+                    case 'integer':
+                    case 'int':
+                        $pass = $value === null || $value === '' || filter_var($value, FILTER_VALIDATE_INT) !== false;
                         break;
 
                     case 'url':
@@ -726,8 +763,10 @@ class Form {
                     case 'exists':
                         $pass = true;
                         if ($this->db && $param && $value !== null && $value !== '') {
-                            [$table, $column] = explode('.', $param, 2) + [1 => 'id'];
+                            $normalized = str_replace('.', ',', (string) $param);
+                            [$table, $column] = array_pad(explode(',', $normalized, 2), 2, 'id');
                             $table = str_starts_with($table, '#__') ? $table : '#__' . $table;
+                            $column = $column !== '' ? $column : 'id';
                             $sql = "SELECT COUNT(*) AS total FROM `{$table}` WHERE `{$column}` = ?";
                             $row = $this->db->query($sql, [(string)$value])->row;
                             if ($row && $row['total'] == 0) $pass = false;

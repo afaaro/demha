@@ -11,10 +11,6 @@ return [
         [
             'label' => 'Roles',
             'url' => 'user/admin/role',
-        ],
-        [
-            'label' => 'Permissions',
-            'url' => 'user/admin/permission',
-        ],
+        ]
     ],
 ];
