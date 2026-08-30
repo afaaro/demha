@@ -103,8 +103,8 @@ class ToolsAdminModule extends Controller
 			redirect_to('tools/admin/module');
 		}
 
-		if (!is_file($modulePath . DS . 'library' . DS . 'setup.php')) {
-			Notify::error('Module cannot be installed, missing library/setup.php: ' . $module);
+		if (!is_file($modulePath . DS . 'helpers' . DS . 'setup.php')) {
+			Notify::error('Module cannot be installed, missing helpers/setup.php: ' . $module);
 			redirect_to('tools/admin/module');
 		}
 
@@ -213,8 +213,8 @@ class ToolsAdminModule extends Controller
 			redirect_to('tools/admin/module');
 		}
 
-		if (!is_file($modulePath . DS . 'library' . DS . 'setup.php')) {
-			Notify::error('Module cannot be upgraded, missing library/setup.php: ' . $module);
+		if (!is_file($modulePath . DS . 'helpers' . DS . 'setup.php')) {
+			Notify::error('Module cannot be upgraded, missing helpers/setup.php: ' . $module);
 			redirect_to('tools/admin/module');
 		}
 
@@ -313,8 +313,8 @@ class ToolsAdminModule extends Controller
 	{
 		$hookFile = null;
 		$candidates = [
-			$modulePath . DS . 'library' . DS . 'setup.php',
-			$modulePath . DS . 'library' . DS . $phase . '.php',
+			$modulePath . DS . 'helpers' . DS . 'setup.php',
+			$modulePath . DS . 'helpers' . DS . $phase . '.php',
 		];
 
 		foreach ($candidates as $candidate) {
@@ -346,8 +346,8 @@ class ToolsAdminModule extends Controller
 	{
 		$hookFile = null;
 		$candidates = [
-			$modulePath . DS . 'library' . DS . 'setup.php',
-			$modulePath . DS . 'library' . DS . $phase . '.php',
+			$modulePath . DS . 'helpers' . DS . 'setup.php',
+			$modulePath . DS . 'helpers' . DS . $phase . '.php',
 		];
 
 		foreach ($candidates as $candidate) {

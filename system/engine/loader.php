@@ -22,7 +22,7 @@ class Loader {
         $this->validateRouteParts($parts);
 
         $module = array_shift($parts);
-        $file = get_module_path($module) . DS . 'services' . DS . implode(DS, $parts) . '.php';
+        $file = get_module_path($module) . DS . 'library' . DS . implode(DS, $parts) . '.php';
 
         if (!file_exists($file)) {
             throw new \RuntimeException("Library file not found: $file");

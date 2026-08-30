@@ -97,7 +97,7 @@ class Action {
             return null;
         }
 
-        $mapFile = $modulePath . DS . 'library' . DS . 'route.php';
+        $mapFile = $modulePath . DS . 'helpers' . DS . 'route.php';
         if (!is_readable($mapFile)) {
             return null;
         }

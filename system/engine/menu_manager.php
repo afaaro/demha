@@ -26,7 +26,7 @@ class MenuManager
                 continue; // Skip disabled modules
             }
             
-            $menuFile = $modulePath . '/library/menu.php';
+            $menuFile = $modulePath . '/helpers/menu.php';
             if (is_file($menuFile)) {
                 $menu = include $menuFile;
                 if (is_array($menu) && isset($menu['label'], $menu['children'])) {

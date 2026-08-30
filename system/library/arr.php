@@ -126,17 +126,19 @@ class Arr implements IteratorAggregate
         static::forget($array, $key);
     }
 
-    public static function has(array $array, string $key): bool
+    public static function has($array, string $key): bool
     {
-        if (array_key_exists($key, $array)) {
-            return true;
-        }
-
-        foreach (explode('.', $key) as $segment) {
-            if (!is_array($array) || !array_key_exists($segment, $array)) {
+        if (!static::accessible($array)) return false;
+        
+        $segments = explode('.', $key);
+        foreach ($segments as $segment) {
+            if (is_array($array) && array_key_exists($segment, $array)) {
+                $array = $array[$segment];
+            } elseif ($array instanceof ArrayAccess && $array->offsetExists($segment)) {
+                $array = $array[$segment];
+            } else {
                 return false;
             }
-            $array = $array[$segment];
         }
         return true;
     }
@@ -177,17 +179,22 @@ class Arr implements IteratorAggregate
         return array_intersect_key($array, array_flip((array) $keys));
     }
 
-    public static function filter_recursive(array $array): array
+    public static function filter_recursive(array $array, bool $preserveFalsy = true): array
     {
-        foreach ($array as $key => &$value) {
+        $result = [];
+        foreach ($array as $key => $value) {
             if (is_array($value)) {
-                $value = static::filter_recursive($value);
-            }
-            if (empty($value)) {
-                unset($array[$key]);
+                $filtered = static::filter_recursive($value, $preserveFalsy);
+                if (!empty($filtered) || $preserveFalsy) {
+                    $result[$key] = $filtered;
+                }
+            } else {
+                if ($preserveFalsy || !empty($value)) {
+                    $result[$key] = $value;
+                }
             }
         }
-        return $array;
+        return $result;
     }
 
     public static function pluck(array $array, string|array $value, string|array|null $key = null): array
@@ -303,14 +310,14 @@ class Arr implements IteratorAggregate
 
     public function unique(int $flags = SORT_STRING): static
     {
-        return new static(array_unique($this->stack, $flags));
+        $this->stack = array_unique($this->stack, $flags);
+        return $this;
     }
 
     public function shuffle(): static
     {
-        $shuffled = $this->stack;
-        shuffle($shuffled);
-        return new static($shuffled);
+        shuffle($this->stack);
+        return $this;
     }
 
     /**
@@ -367,5 +374,45 @@ class Arr implements IteratorAggregate
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->stack);
+    }
+
+    public function __get(string $key): mixed
+    {
+        return static::get($this->stack, $key);
+    }
+
+    public function __set(string $key, mixed $value): void
+    {
+        static::set($this->stack, $key, $value);
+    }
+
+    public function __isset(string $key): bool
+    {
+        return static::has($this->stack, $key);
+    }
+
+    public function __unset(string $key): void
+    {
+        static::forget($this->stack, $key);
+    }
+
+    public function offsetExists($offset): bool
+    {
+        return static::has($this->stack, (string)$offset);
+    }
+    
+    public function offsetGet($offset): mixed
+    {
+        return $this->__get((string)$offset);
+    }
+    
+    public function offsetSet($offset, $value): void
+    {
+        $offset === null ? $this->push($value) : $this->__set((string)$offset, $value);
+    }
+    
+    public function offsetUnset($offset): void
+    {
+        $this->__unset((string)$offset);
     }
 }
