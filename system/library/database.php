@@ -258,7 +258,7 @@ class Database
         ];
     }
 
-    public function insertId(): int
+    public function getLastId(): int
     {
         return (int) $this->pdo->lastInsertId();
     }

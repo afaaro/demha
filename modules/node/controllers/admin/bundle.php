@@ -90,8 +90,7 @@ class NodeAdminBundle extends Controller {
     {
         // --- Set validation rules ---
         $this->form->setRules([
-            'name' => 'required|min:3|max:100',
-            'machine_name' => 'required|min:3|max:50|alpha_dash|unique:node_bundles,machine_name',
+            'name' => 'required|min:3|max:100|unique:node_bundles,name',
             'description' => 'max:255'
         ]);
 

@@ -55,11 +55,16 @@ class NodeNodeBundleModel extends Model
      */
     public function saveBundle(array $data): array
     {
-        if (empty($data['name']) || empty($data['machine_name'])) {
+        if (empty($data['name'])) {
             return [
                 'success' => false,
-                'errors' => ['name' => 'Name and machine name are required.']
+                'errors' => ['name' => 'Name is required.']
             ];
+        }
+
+        if (empty($data['machine_name'])) {
+            // Generate machine name from name
+            $data['machine_name'] = slug($data['name'], '_');
         }
 
         $fields = [

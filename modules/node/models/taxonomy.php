@@ -2,102 +2,181 @@
 
 use System\Engine\Model;
 
-class NodeTaxonomyVocabularyModel extends Model
+/**
+ * Model for managing Node Taxonomies (Vocabularies) and Terms
+ */
+class NodeTaxonomyModel extends Model
 {
+    /**
+     * Database table for vocabularies (with prefix placeholder)
+     *
+     * @var string
+     */
     protected $table = '#__node_taxonomy_vocabularies';
 
     /**
-     * Get all vocabularies.
+     * Related terms table name
+     *
+     * @var string
      */
-    public function getVocabularies(): array
+    protected string $termsTable = '#__node_taxonomy_terms';
+
+    // -------------------------------------------------------------------------
+    // Vocabulary Methods
+    // -------------------------------------------------------------------------
+
+    /**
+     * Get all vocabularies, ordered alphabetically by name
+     *
+     * @return array List of vocabulary records
+     */
+    public function getTaxonomies(): array
     {
         return $this->db->query(
-            "SELECT * FROM {$this->table} ORDER BY name"
-        )->rows;
+            "SELECT * FROM {$this->table} ORDER BY `name` ASC"
+        )->rows ?? [];
     }
 
     /**
-     * Get single vocabulary by ID.
+     * Get a single vocabulary by its primary key ID
+     *
+     * @param int $id Vocabulary ID
+     * @return array|null Vocabulary record or null if not found
      */
-    public function getVocabulary(int $id): ?array
+    public function getTaxonomy(int $id): ?array
     {
         return $this->db->query(
-            "SELECT * FROM {$this->table} WHERE id = ?",
+            "SELECT * FROM {$this->table} WHERE `id` = ?",
             [$id]
         )->row ?: null;
     }
 
+    // -------------------------------------------------------------------------
+    // Terms Methods
+    // -------------------------------------------------------------------------
+
     /**
-     * Get vocabulary by machine name.
+     * Get terms by vocabulary machine name (used in indexAction listing)
+     *
+     * @param string $machineName Vocabulary machine name
+     * @return array Terms belonging to this vocabulary
      */
-    public function getByMachineName(string $machineName): ?array
+    public function getTerms(string $machineName): array
     {
         return $this->db->query(
-            "SELECT * FROM {$this->table} WHERE machine_name = ?",
+            "SELECT t.* FROM {$this->termsTable} t
+             INNER JOIN {$this->table} v ON t.vocabulary_id = v.id
+             WHERE v.machine_name = ?
+             ORDER BY t.name ASC",
             [$machineName]
+        )->rows ?? [];
+    }
+
+    /**
+     * Get all terms grouped by vocabulary ID
+     *
+     * @return array [vocabulary_id => [term1, term2, ...]]
+     */
+    public function getTermsGrouped(): array
+    {
+        $all = $this->db->query(
+            "SELECT * FROM {$this->termsTable} ORDER BY `name` ASC"
+        )->rows ?? [];
+
+        $grouped = [];
+        foreach ($all as $term) {
+            $taxId = $term['vocabulary_id'] ?? 0;
+            $grouped[$taxId][] = $term;
+        }
+        return $grouped;
+    }
+
+    /**
+     * Get terms belonging to a specific vocabulary by ID
+     *
+     * @param int $vocabularyId
+     * @return array
+     */
+    public function getTermsByTaxonomy(int $vocabularyId): array
+    {
+        return $this->db->query(
+            "SELECT * FROM {$this->termsTable} WHERE `vocabulary_id` = ? ORDER BY `name` ASC",
+            [$vocabularyId]
+        )->rows ?? [];
+    }
+
+    /**
+     * Get a single term by ID
+     *
+     * @param int $termId
+     * @return array|null Term record or null if not found
+     */
+    public function getTerm(int $termId): ?array
+    {
+        return $this->db->query(
+            "SELECT * FROM {$this->termsTable} WHERE `id` = ?",
+            [$termId]
         )->row ?: null;
     }
 
     /**
-     * Save vocabulary.
+     * Save (create or update) a term — matches Controller expectations
+     *
+     * @param array $data Term data: id (optional), vocabulary_id, name, slug, description
+     * @return int Term ID
      */
-    public function saveVocabulary(array $data): array
+    public function saveTerm(array $data): int
     {
-        $errors = [];
-        if (empty($data['name'])) {
-            $errors['name'] = 'Name is required.';
-        }
-        if (empty($data['machine_name'])) {
-            $errors['machine_name'] = 'Machine name is required.';
-        } elseif (!preg_match('/^[a-z0-9_]+$/', $data['machine_name'])) {
-            $errors['machine_name'] = 'Only lowercase letters, numbers, and underscores.';
-        }
-
-        // Check duplicate machine name
-        $exists = $this->db->query(
-            "SELECT id FROM {$this->table} WHERE machine_name = ? AND id != ?",
-            [$data['machine_name'], (int) ($data['id'] ?? 0)]
-        )->row;
-        if ($exists) {
-            $errors['machine_name'] = 'Machine name already exists.';
-        }
-
-        if (!empty($errors)) {
-            return ['success' => false, 'errors' => $errors];
-        }
-
-        $fields = [
-            'name'         => trim($data['name']),
-            'machine_name' => strtolower(trim($data['machine_name'])),
-            'description'  => $data['description'] ?? null,
-        ];
+        // Generate slug if not provided
+        $slug = !empty($data['slug']) ? $data['slug'] : $this->slugify($data['name'] ?? '');
+        $description = $data['description'] ?? null;
 
         if (!empty($data['id'])) {
-            $this->db->update($this->table, $fields, ['id' => $data['id']]);
-            return ['success' => true, 'id' => (int) $data['id']];
+            // Update existing term
+            $this->db->query(
+                "UPDATE {$this->termsTable}
+                 SET `name` = ?, `slug` = ?, `description` = ?, `vocabulary_id` = ?
+                 WHERE `id` = ?",
+                [$data['name'], $slug, $description, $data['vocabulary_id'], $data['id']]
+            );
+            return (int) $data['id'];
         }
 
-        $id = $this->db->insert($this->table, $fields);
-        return ['success' => true, 'id' => $id];
+        // Insert new term
+        $this->db->query(
+            "INSERT INTO {$this->termsTable} (`vocabulary_id`, `name`, `slug`, `description`)
+             VALUES (?, ?, ?, ?)",
+            [$data['vocabulary_id'], $data['name'], $slug, $description]
+        );
+        return (int) $this->db->getLastId();
     }
 
     /**
-     * Delete vocabulary — only if empty.
+     * Delete a term by ID
+     *
+     * @param int $termId
+     * @return void
      */
-    public function deleteVocabulary(int $id): array
+    public function deleteTerm(int $termId): void
     {
-        $count = $this->db->query(
-            "SELECT COUNT(*) as cnt FROM {$this->table} t
-             JOIN #__node_taxonomy_terms term ON term.vocabulary_id = t.id
-             WHERE t.id = ?",
-            [$id]
-        )->row['cnt'];
+        $this->db->query(
+            "DELETE FROM {$this->termsTable} WHERE `id` = ?",
+            [$termId]
+        );
+    }
 
-        if ($count > 0) {
-            return ['success' => false, 'errors' => ['Cannot delete: vocabulary has terms.']];
-        }
+    // -------------------------------------------------------------------------
+    // Internal Helpers
+    // -------------------------------------------------------------------------
 
-        $this->db->query("DELETE FROM {$this->table} WHERE id = ?", [$id]);
-        return ['success' => true];
+    /**
+     * Generate a URL-friendly slug from text
+     *
+     * @param string $text
+     * @return string
+     */
+    protected function slugify(string $text): string
+    {
+        return slug($text);
     }
 }
