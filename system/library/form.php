@@ -316,6 +316,11 @@ class Form {
         return $this->request()?->post($key, 'raw', $default) ?? $default;
     }
 
+    public function getOldInput(): array
+    {
+        return (array)$this->session->get('_old_input', []);
+    }
+    
     // ============================================
     // RENDERING
     // ============================================

@@ -72,7 +72,7 @@ class Order_Service
                     $cart['currency']
                 ]
             );
-            $orderId = $this->db->lastInsertId();
+            $orderId = $this->db->insert_id();
 
             // Insert order items
             foreach ($items as $item) {
@@ -155,7 +155,7 @@ class Order_Service
                     $shipmentData['shipped_at'] ?? null
                 ]
             );
-            $id = $this->db->lastInsertId();
+            $id = $this->db->insert_id();
             $this->logger->info("Shipment added: ID $id for order $orderId");
             return $id;
         } catch (Exception $e) {
@@ -185,7 +185,7 @@ class Order_Service
                     json_encode($txnData['response'] ?? [])
                 ]
             );
-            $id = $this->db->lastInsertId();
+            $id = $this->db->insert_id();
             $this->logger->info("Transaction recorded: ID $id for order $orderId");
             return $id;
         } catch (Exception $e) {

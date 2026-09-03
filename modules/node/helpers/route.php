@@ -15,14 +15,14 @@ return [
     
     'node/admin/post/create' => [
         'controller' => 'node/admin/post',
-        'action' => 'form',
+        'action' => 'create',
         'params' => ['bundle'],  // /admin/node/post/create/article → $params['bundle'] = 'article'
         'permission' => 'node.create',
     ],
     
     'node/admin/post/edit' => [
         'controller' => 'node/admin/post',
-        'action' => 'form',
+        'action' => 'edit',
         'permission' => 'node.edit',
         'params' => ['id'],  // /admin/node/post/edit/123 → $params['id'] = 123
     ],

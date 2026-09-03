@@ -42,7 +42,7 @@ class Product_Service
                 ]
             );
 
-            $id = $this->db->lastInsertId();
+            $id = $this->db->insert_id();
 
             if (!empty($data['images'])) {
                 $this->addImages($id, $data['images']);
@@ -158,7 +158,7 @@ class Product_Service
                     $data['status'] ?? 'active'
                 ]
             );
-            $variantId = $this->db->lastInsertId();
+            $variantId = $this->db->insert_id();
 
             // Link option values if provided
             if (!empty($data['option_values'])) {

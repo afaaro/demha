@@ -140,7 +140,7 @@ class NewsAdminArticleModel extends Model
                 $tagId = (int) ($existing['tag_id'] ?? 0);
             } else {
                 $this->db->insert('news_tags', ['name' => $tagName, 'slug' => $slug]);
-                $tagId = (int) $this->db->lastInsertId();
+                $tagId = (int) $this->db->insert_id();
             }
 
             if ($tagId > 0) {

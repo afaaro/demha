@@ -5,96 +5,6 @@ return [
         'controller' => 'shop/admin/dashboard',
         'action'     => 'index',
     ],
-    // ============================================================
-    // Store management
-    // ============================================================
-    'shop/admin/store' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'index',
-        'params'     => ['page', 'status'],
-    ],
-    'shop/admin/store/toggle' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'toggle',
-        'params'     => ['id'],
-    ],
-    'shop/admin/store/view' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'view',
-        'params'     => ['id'],
-    ],
-    'shop/admin/store/add' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'add',
-        'params'     => [],
-    ],
-    'shop/admin/store/edit' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'edit',
-        'params'     => ['store_id'],
-    ],
-    'shop/admin/store/delete' => [
-        'controller' => 'shop/admin/store',
-        'action'     => 'delete',
-        'params'     => ['store_id'],
-    ],
-
-    // ============================================================
-    // Seller roles
-    // ============================================================
-    'shop/admin/seller_role/add' => [
-        'controller' => 'shop/admin/seller_role',
-        'action'     => 'add',
-        'params'     => [],
-    ],
-    'shop/admin/seller_role/edit' => [
-        'controller' => 'shop/admin/seller_role',
-        'action'     => 'edit',
-        'params'     => ['id'],
-    ],
-    'shop/admin/seller_role/delete' => [
-        'controller' => 'shop/admin/seller_role',
-        'action'     => 'delete',
-        'params'     => ['id'],
-    ],
-
-    // ============================================================
-    // User‑seller mapping
-    // ============================================================
-    'shop/admin/user_seller' => [
-        'controller' => 'shop/admin/user_seller',
-        'action'     => 'index',
-    ],
-    'shop/admin/user_seller/invite' => [
-        'controller' => 'shop/admin/user_seller',
-        'action'     => 'invite',
-        'params'     => [],
-    ],
-    'shop/admin/user_seller/edit' => [
-        'controller' => 'shop/admin/user_seller',
-        'action'     => 'edit',
-        'params'     => ['id'],
-    ],
-    'shop/admin/user_seller/delete' => [
-        'controller' => 'shop/admin/user_seller',
-        'action'     => 'delete',
-        'params'     => ['id'],
-    ],
-
-    // ============================================================
-    // User‑store creation (?) – maybe a separate controller
-    // ============================================================
-    'shop/admin/user_store' => [
-        'controller' => 'shop/admin/user_store',
-        'action'     => 'index',
-        'params'     => [],
-    ],
-
-    'shop/admin/user_store/create' => [
-        'controller' => 'shop/admin/user_store',
-        'action'     => 'create',
-        'params'     => [],
-    ],
 
     // ============================================================
     // Categories
@@ -213,6 +123,61 @@ return [
         'params'     => ['id']
     ],
 
+    // Admin Order Routes
+    'shop/admin/order' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'index',
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/view' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'view',
+        'params' => ['id'],
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/update-status' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'updateStatus',
+        'params' => ['id'],
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/create-fulfillment' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'createFulfillment',
+        'params' => ['id'],
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/update-shipment' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'updateShipment',
+        'params' => ['id'],
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/export' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'export',
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/delete' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'delete',
+        'params' => ['id'],
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+    'shop/admin/order/bulk' => [
+        'controller' => 'shop/admin/Order',
+        'action' => 'bulk',
+        'auth' => true,
+        'permission' => 'shop.manage_orders'
+    ],
+
     // ============================================================
     // Front‑end product view
     // ============================================================
@@ -222,7 +187,7 @@ return [
     ],
     'shop/product' => [
         'controller' => 'shop/product',
-        'action'     => 'view',
+        'action'     => 'index',
         'params'     => ['id'],
     ],
     'shop/cart' => [
@@ -250,12 +215,10 @@ return [
         'controller' => 'shop/checkout',
         'action'     => 'index',
     ],
-    'shop/checkout' => [
-        'controller' => 'shop/checkout',
-        'action'     => 'index',
-    ],
     'shop/checkout/place_order' => [
         'controller' => 'shop/checkout',
         'action'     => 'place_order',
     ],
+
+    
 ];

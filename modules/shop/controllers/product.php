@@ -1,210 +1,425 @@
 <?php
-use App\Modules\Shop\Controllers\Base;
+use System\Engine\Controller;
 
-class ShopProduct extends Base {
-    public function viewAction(): void
+class ShopProduct extends Controller
+{
+    public function indexAction(): void
     {
-        $id = (int) $this->request->route('id');
+        $id = (int) $this->request->get('id', 'int', 0);
+
+        // ---- Product details ----
         $product = $this->db->query("
-            SELECT p.*, c.name AS category_name, s.name AS store_name
+            SELECT p.*, c.name AS category_name
             FROM #__shop_product p
             LEFT JOIN #__shop_categories c ON c.id = p.category_id
-            LEFT JOIN #__shop_stores s ON s.id = p.store_id
             WHERE p.id = ? AND p.status = 'active' AND p.deleted_at IS NULL
         ", [$id])->row;
 
         if (!$product) {
             http_response_code(404);
             echo $this->view->inline(function () {
-                echo '<h3>Product not found</h3>';
-            }, 'shop');
+                echo '<div class="container py-5"><h3>Product not found</h3><p>The product you are looking for does not exist or is unavailable.</p></div>';
+            }, 'main');
             return;
         }
 
         $this->view->assign('title', $product['name']);
 
-        $images = json_decode($product['images'] ?? '[]', true);
-        $cover = $product['primary_image'] ?? ($images[0] ?? null);
+        // ---- Product Images ----
+        $images = $this->db->query("
+            SELECT url, is_primary, alt
+            FROM #__shop_product_image
+            WHERE product_id = ?
+            ORDER BY is_primary DESC, sort_order ASC
+        ", [$id])->rows;
 
-        // Get option groups assigned to this product
+        $primaryImg = null;
+        $allImages = [];
+        foreach ($images as $img) {
+            $allImages[] = $img['url'];
+            if ($img['is_primary']) {
+                $primaryImg = $img['url'];
+            }
+        }
+        if (!$primaryImg && !empty($allImages)) {
+            $primaryImg = $allImages[0];
+        }
+
+        // ---- Option Groups & Values (with sort_order) ----
         $optionGroups = $this->db->query("
-            SELECT og.id AS group_id, og.name AS group_name, og.type,
-                   ov.id AS value_id, ov.value AS value_name
+            SELECT og.id AS group_id, og.name AS group_name, og.type, og.sort_order AS group_sort,
+                   ov.id AS value_id, ov.value AS value_name, ov.sort_order AS val_sort
             FROM #__shop_product_option_group pog
             JOIN #__shop_option_group og ON og.id = pog.group_id
             JOIN #__shop_option_value ov ON ov.group_id = og.id
             WHERE pog.product_id = ?
-            ORDER BY og.sort_order, ov.sort_order
+            ORDER BY og.sort_order, og.id, ov.sort_order, ov.id
         ", [$id])->rows;
 
-        // Get variants with their option value IDs
-        $variants = $this->db->query("
-            SELECT pv.*, 
-                   GROUP_CONCAT(pvo.value_id ORDER BY pvo.value_id ASC) AS value_ids
-            FROM #__shop_product_variant pv
-            LEFT JOIN #__shop_product_variant_option pvo ON pvo.variant_id = pv.id
-            WHERE pv.product_id = ?
-            GROUP BY pv.id
-            ORDER BY pv.price ASC
-        ", [$id])->rows;
-
-        $variantMap = [];
-        foreach ($variants as $v) {
-            if (!empty($v['value_ids'])) {
-                $key = implode('_', explode(',', $v['value_ids']));
-                $variantMap[$key] = $v;
+        // Get display order of group IDs
+        $groupOrder = [];
+        foreach ($optionGroups as $og) {
+            if (!in_array($og['group_id'], $groupOrder)) {
+                $groupOrder[] = $og['group_id'];
             }
         }
 
-        $hasOptions = !empty($optionGroups);
+        // Map value_id → group_id
+        $valueToGroup = [];
+        foreach ($optionGroups as $og) {
+            $valueToGroup[$og['value_id']] = $og['group_id'];
+        }
 
-        echo $this->view->inline(function ($view) use ($product, $images, $cover, $optionGroups, $variants, $variantMap, $hasOptions) {
-            echo Notify::read();
+        // ---- Variants ----
+        $variantsRaw = $this->db->query("
+            SELECT pv.id, pv.sku, pv.price,
+                   COALESCE((SELECT quantity FROM #__shop_inventory WHERE variant_id = pv.id LIMIT 1), 0) AS stock,
+                   pvo.value_id
+            FROM #__shop_product_variant pv
+            LEFT JOIN #__shop_product_variant_option pvo ON pvo.variant_id = pv.id
+            WHERE pv.product_id = ? AND pv.deleted_at IS NULL
+            ORDER BY pv.id
+        ", [$id])->rows;
 
-            echo '<div class="row">';
-            // ---- Image column ----
-            echo '<div class="col-md-6">';
-            if ($cover) {
-                $src = $this->url->asset('uploads/shop/products/' . $product['store_id'] . '/' . $cover);
-                echo "<img src='{$src}' class='img-fluid rounded' alt='{$product['name']}' style='width:100%;'>";
-            } else {
-                echo '<div class="bg-light text-center p-5 rounded">No image</div>';
-            }
-            if (count($images) > 1) {
-                echo '<div class="row mt-2 g-1">';
-                foreach ($images as $img) {
-                    $thumbSrc = $this->url->asset('uploads/shop/products/' . $product['store_id'] . '/' . $img);
-                    echo "<div class='col-3'><img src='{$thumbSrc}' class='img-thumbnail' style='height:80px;object-fit:cover;cursor:pointer;' onclick=\"this.closest('.col-md-6').querySelector('.img-fluid').src='{$thumbSrc}'\"></div>";
-                }
-                echo '</div>';
-            }
-            echo '</div>';
+        // Build variant map in correct display order
+        $variantMap = [];
+        $currentVid = null;
+        $valueIds = [];
+        $variantData = [];
 
-            // ---- Details column ----
-            echo '<div class="col-md-6">';
-            echo "<h1>" . htmlspecialchars($product['name']) . "</h1>";
-            echo "<p class='text-muted'>" . htmlspecialchars($product['category_name'] ?? 'Uncategorized') . " – " . htmlspecialchars($product['store_name'] ?? '') . "</p>";
-
-            // Price display
-            if ($hasOptions) {
-                $minPrice = !empty($variants) ? min(array_column($variants, 'price')) : $product['price'];
-                $maxPrice = !empty($variants) ? max(array_column($variants, 'price')) : $product['price'];
-                if ($minPrice == $maxPrice) {
-                    echo "<h3 class='text-primary'>£" . number_format($minPrice, 2) . "</h3>";
-                } else {
-                    echo "<h3 class='text-primary'>£" . number_format($minPrice, 2) . " – £" . number_format($maxPrice, 2) . "</h3>";
-                }
-            } else {
-                echo "<h3 class='text-primary'>£" . number_format($product['price'], 2) . "</h3>";
-            }
-
-            echo "<p>" . nl2br(htmlspecialchars($product['description'] ?? '')) . "</p>";
-
-            if ($hasOptions) {
-                echo '<form id="add-to-cart-form" method="POST" action="' . $this->url->to('shop/cart/add') . '">';
-                echo '<input type="hidden" name="product_id" value="' . $product['id'] . '">';
-                echo '<input type="hidden" name="variant_id" id="selected-variant" value="">';
-
-                // Group options by group_id
-                $groups = [];
-                foreach ($optionGroups as $og) {
-                    if (!isset($groups[$og['group_id']])) {
-                        $groups[$og['group_id']] = [
-                            'name' => $og['group_name'],
-                            'type' => $og['type'],
-                            'values' => [],
-                        ];
+        foreach ($variantsRaw as $row) {
+            if ($currentVid !== $row['id']) {
+                // Save previous variant
+                if ($currentVid !== null) {
+                    $keyParts = [];
+                    foreach ($groupOrder as $gid) {
+                        if (!empty($valueIds[$gid])) {
+                            $keyParts[] = $valueIds[$gid];
+                        }
                     }
-                    $groups[$og['group_id']]['values'][] = [
-                        'id' => $og['value_id'],
-                        'name' => $og['value_name'],
+                    $key = implode(',', $keyParts);
+                    $variantMap[$key] = [
+                        'id'    => $currentVid,
+                        'sku'   => $variantData['sku'],
+                        'price' => $variantData['price'],
+                        'stock' => $variantData['stock'],
                     ];
                 }
-
-                foreach ($groups as $gid => $group) {
-                    echo '<div class="mb-3">';
-                    echo '<label class="form-label fw-bold">' . htmlspecialchars($group['name']) . '</label>';
-                    echo '<select class="form-select product-option" data-group="' . $gid . '">';
-                    echo '<option value="">Select ' . htmlspecialchars($group['name']) . '</option>';
-                    foreach ($group['values'] as $val) {
-                        echo '<option value="' . $val['id'] . '">' . htmlspecialchars($val['name']) . '</option>';
-                    }
-                    echo '</select>';
-                    echo '</div>';
-                }
-
-                echo '<div id="variant-info" class="alert alert-info">Please select all options to see price and stock.</div>';
-
-                echo '<div class="input-group mb-3" style="max-width:150px;">';
-                echo '<label class="input-group-text">Qty</label>';
-                echo '<input type="number" name="quantity" class="form-control" value="1" min="1" max="999">';
-                echo '</div>';
-                echo '<button type="submit" class="btn btn-success btn-lg" id="add-to-cart-btn" disabled>Add to Cart</button>';
-                echo '</form>';
-
-                $variantMapJson = json_encode($variantMap);
-                $view->doc->addInlineJs("
-                    const variantMap = {$variantMapJson};
-
-                    document.querySelectorAll('.product-option').forEach(function(select) {
-                        select.addEventListener('change', updateVariant);
-                    });
-
-                    function updateVariant() {
-                        const selects = document.querySelectorAll('.product-option');
-                        const selectedValues = [];
-                        let allSelected = true;
-                        selects.forEach(function(sel) {
-                            if (sel.value === '') {
-                                allSelected = false;
-                            } else {
-                                selectedValues.push(sel.value);
-                            }
-                        });
-
-                        const infoBox = document.getElementById('variant-info');
-                        const addBtn = document.getElementById('add-to-cart-btn');
-                        const variantInput = document.getElementById('selected-variant');
-
-                        if (!allSelected) {
-                            infoBox.innerHTML = '<div class=\"alert alert-info\">Please select all options to see price and stock.</div>';
-                            addBtn.disabled = true;
-                            variantInput.value = '';
-                            return;
-                        }
-
-                        const key = selectedValues.join('_');
-                        const variant = variantMap[key];
-
-                        if (variant) {
-                            const price = parseFloat(variant.price).toFixed(2);
-                            const stock = parseInt(variant.stock);
-                            const sku = variant.sku || 'N/A';
-                            infoBox.innerHTML = '<div class=\"alert alert-success\">Price: £' + price + ' | Stock: ' + stock + ' | SKU: ' + sku + '</div>';
-                            addBtn.disabled = (stock <= 0);
-                            variantInput.value = variant.id;
-                        } else {
-                            infoBox.innerHTML = '<div class=\"alert alert-warning\">This combination is not available.</div>';
-                            addBtn.disabled = true;
-                            variantInput.value = '';
-                        }
-                    }
-                ");
-            } else {
-                // ---- Simple product (no options) ----
-                $maxQty = isset($product['quantity']) ? $product['quantity'] : 999;
-                echo '<form id="add-to-cart-form" method="POST" action="' . $this->url->to('shop/cart/add') . '">';
-                echo '<input type="hidden" name="product_id" value="' . $product['id'] . '">';
-                echo '<input type="hidden" name="variant_id" value="0">';
-                echo '<div class="input-group mb-3" style="max-width:150px;">';
-                echo '<label class="input-group-text">Qty</label>';
-                echo '<input type="number" name="quantity" class="form-control" value="1" min="1" max="' . $maxQty . '">';
-                echo '</div>';
-                echo '<button type="submit" class="btn btn-success btn-lg">Add to Cart</button>';
-                echo '</form>';
+                $currentVid = $row['id'];
+                $variantData = [
+                    'sku'   => $row['sku'],
+                    'price' => $row['price'],
+                    'stock' => $row['stock']
+                ];
+                $valueIds = [];
             }
+            if (!empty($row['value_id']) && isset($valueToGroup[$row['value_id']])) {
+                $gid = $valueToGroup[$row['value_id']];
+                $valueIds[$gid] = $row['value_id'];
+            }
+        }
 
-            echo '</div></div>';
-        }, 'shop/shop');
+        // Save last variant
+        if ($currentVid !== null) {
+            $keyParts = [];
+            foreach ($groupOrder as $gid) {
+                if (!empty($valueIds[$gid])) {
+                    $keyParts[] = $valueIds[$gid];
+                }
+            }
+            $key = implode(',', $keyParts);
+            $variantMap[$key] = [
+                'id'    => $currentVid,
+                'sku'   => $variantData['sku'],
+                'price' => $variantData['price'],
+                'stock' => $variantData['stock'],
+            ];
+        }
+
+        // ---- Debug: Log variant map for frontend troubleshooting ----
+        error_log('Product ID: ' . $id . ' - Variant Map: ' . print_r($variantMap, true));
+
+        $hasOptions = !empty($groupOrder);
+        $url = $this->url;
+
+        echo $this->view->inline(function ($view) use (
+            $product, $allImages, $primaryImg, $optionGroups,
+            $variantMap, $hasOptions, $url, $groupOrder, $id
+        ) {
+            ?>
+            <div class="container py-4">
+                <div class="row g-4">
+
+                    <!-- Image Column -->
+                    <div class="col-md-6">
+                        <?php if ($primaryImg): ?>
+                            <?php
+                            $src = $url->asset('uploads/shop/products/' . basename($primaryImg));
+                            ?>
+                            <img src="<?= $src ?>" class="img-fluid rounded shadow-sm" alt="<?= htmlspecialchars($product['name']) ?>" id="main-product-img">
+                        <?php else: ?>
+                            <div class="bg-light text-center p-5 rounded">
+                                <p class="text-muted">No image uploaded</p>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (count($allImages) > 1): ?>
+                        <div class="row mt-3 g-2">
+                            <?php foreach ($allImages as $imgUrl): ?>
+                                <?php $thumbSrc = $url->asset('uploads/shop/products/' . basename($imgUrl)); ?>
+                                <div class="col-3">
+                                    <img src="<?= $thumbSrc ?>" class="img-thumbnail" style="height:80px;object-fit:cover;cursor:pointer;" 
+                                         onclick="document.getElementById('main-product-img').src='<?= $thumbSrc ?>'">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Info Column -->
+                    <div class="col-md-6">
+                        <h1 class="h3 mb-2"><?= htmlspecialchars($product['name']) ?></h1>
+                        <p class="text-muted mb-3"><?= htmlspecialchars($product['category_name'] ?? 'Uncategorized') ?></p>
+
+                        <!-- Price -->
+                        <?php if ($hasOptions): ?>
+                            <?php
+                            $prices = array_column($variantMap, 'price');
+                            $minPrice = $prices ? min($prices) : $product['price'];
+                            $maxPrice = $prices ? max($prices) : $product['price'];
+                            ?>
+                            <h3 class="text-primary mb-3">
+                                <?php if ($minPrice == $maxPrice): ?>
+                                    £<?= number_format($minPrice, 2) ?>
+                                <?php else: ?>
+                                    £<?= number_format($minPrice, 2) ?> – £<?= number_format($maxPrice, 2) ?>
+                                <?php endif; ?>
+                            </h3>
+                        <?php else: ?>
+                            <h3 class="text-primary mb-3">£<?= number_format($product['price'], 2) ?></h3>
+                        <?php endif; ?>
+
+                        <!-- Description -->
+                        <p><?= nl2br(htmlspecialchars($product['description'] ?? '')) ?></p>
+
+                        <?php if ($hasOptions): ?>
+                            <!-- With Options -->
+                            <form method="POST" action="<?= $url->to('shop/cart/add') ?>">
+                                <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
+                                <input type="hidden" name="variant_id" id="selected-variant" value="">
+
+                                <?php
+                                // Build grouped options
+                                $groups = [];
+                                foreach ($optionGroups as $og) {
+                                    if (!isset($groups[$og['group_id']])) {
+                                        $groups[$og['group_id']] = [
+                                            'name' => $og['group_name'],
+                                            'type' => $og['type'] ?? 'select',
+                                            'values' => []
+                                        ];
+                                    }
+                                    $found = false;
+                                    foreach ($groups[$og['group_id']]['values'] as $v) {
+                                        if ($v['id'] == $og['value_id']) {
+                                            $found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!$found) {
+                                        $groups[$og['group_id']]['values'][] = [
+                                            'id' => $og['value_id'],
+                                            'name' => $og['value_name']
+                                        ];
+                                    }
+                                }
+
+                                // Render selects in display order
+                                foreach ($groupOrder as $gid):
+                                    $g = $groups[$gid];
+                                    $isColor = strtolower($g['name']) === 'color';
+                                ?>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold"><?= htmlspecialchars($g['name']) ?></label>
+                                    <?php if ($isColor): ?>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <?php foreach ($g['values'] as $val): ?>
+                                                <button type="button" 
+                                                        class="btn btn-outline-secondary option-btn" 
+                                                        data-group="<?= $gid ?>" 
+                                                        data-value="<?= $val['id'] ?>"
+                                                        style="min-width:50px;">
+                                                    <?= htmlspecialchars($val['name']) ?>
+                                                </button>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <input type="hidden" class="product-option-hidden" data-group="<?= $gid ?>" value="">
+                                    <?php else: ?>
+                                        <select class="form-select product-option" data-group="<?= $gid ?>" required>
+                                            <option value="">— Select <?= htmlspecialchars($g['name']) ?> —</option>
+                                            <?php foreach ($g['values'] as $val): ?>
+                                                <option value="<?= $val['id'] ?>"><?= htmlspecialchars($val['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    <?php endif; ?>
+                                </div>
+                                <?php endforeach; ?>
+
+                                <div id="variant-info" class="alert alert-info mb-3">
+                                    Please select all options to see price and stock.
+                                </div>
+
+                                <div class="input-group mb-3" style="max-width:160px;">
+                                    <label class="input-group-text">Qty</label>
+                                    <input type="number" name="quantity" class="form-control" value="1" min="1" max="999">
+                                </div>
+
+                                <button type="submit" class="btn btn-success btn-lg w-100" id="add-btn" disabled>
+                                    Add to Cart
+                                </button>
+                            </form>
+
+                            <!-- Pass data to JavaScript -->
+                            <?php
+                            $vm = json_encode($variantMap);
+                            $go = json_encode($groupOrder);
+                            $view->doc->addInlineJs("
+                                const variantMap = {$vm};
+                                const groupOrder = {$go};
+                                const info = document.getElementById('variant-info');
+                                const btn = document.getElementById('add-btn');
+                                const vidInput = document.getElementById('selected-variant');
+
+                                // Get all option inputs
+                                const selects = document.querySelectorAll('.product-option');
+                                const hiddenInputs = document.querySelectorAll('.product-option-hidden');
+                                const optionButtons = document.querySelectorAll('.option-btn');
+
+                                // Color buttons
+                                optionButtons.forEach(btn => {
+                                    btn.addEventListener('click', function() {
+                                        const group = this.dataset.group;
+                                        const value = this.dataset.value;
+                                        
+                                        // Update hidden input
+                                        document.querySelector(`.product-option-hidden[data-group=\"\${group}\"]`).value = value;
+                                        
+                                        // Update button styles
+                                        const siblings = this.parentElement.querySelectorAll('.option-btn');
+                                        siblings.forEach(s => s.classList.remove('btn-primary', 'active'));
+                                        this.classList.add('btn-primary', 'active');
+                                        
+                                        update();
+                                    });
+                                });
+
+                                // Select dropdowns
+                                selects.forEach(s => s.addEventListener('change', update));
+
+                                // Hidden inputs for color
+                                hiddenInputs.forEach(h => h.addEventListener('change', update));
+
+                                window.addEventListener('DOMContentLoaded', function() {
+                                    setTimeout(update, 100);
+                                });
+
+                                function update() {
+                                    // Get selected values
+                                    const sel = {};
+
+                                    // Get select values
+                                    selects.forEach(s => {
+                                        const val = (s.value || '').trim();
+                                        if (val) sel[s.dataset.group] = val;
+                                    });
+
+                                    // Get hidden input values (for color buttons)
+                                    hiddenInputs.forEach(h => {
+                                        const val = (h.value || '').trim();
+                                        if (val) sel[h.dataset.group] = val;
+                                    });
+
+                                    // Build key
+                                    const keyParts = [];
+                                    let ready = true;
+                                    groupOrder.forEach(gid => {
+                                        const val = sel[gid];
+                                        if (!val) {
+                                            ready = false;
+                                        } else {
+                                            keyParts.push(val);
+                                        }
+                                    });
+                                    const key = keyParts.join(',');
+
+                                    if (!ready) {
+                                        info.className = 'alert alert-info mb-3';
+                                        info.textContent = 'Please select all options to see price and stock.';
+                                        btn.disabled = true;
+                                        vidInput.value = '';
+                                        return;
+                                    }
+
+                                    if (variantMap.hasOwnProperty(key)) {
+                                        const v = variantMap[key];
+                                        const inStock = v.stock > 0;
+                                        info.className = inStock ? 'alert alert-success mb-3' : 'alert alert-warning mb-3';
+                                        info.innerHTML = '<strong>Price:</strong> £' + parseFloat(v.price).toFixed(2) + 
+                                                         ' | <strong>Stock:</strong> ' + v.stock + 
+                                                         ' | <strong>SKU:</strong> ' + v.sku;
+                                        btn.disabled = !inStock;
+                                        vidInput.value = v.id;
+                                    } else {
+                                        info.className = 'alert alert-danger mb-3';
+                                        info.innerHTML = '<strong>This combination is not available.</strong> Please select a different combination.';
+                                        btn.disabled = true;
+                                        vidInput.value = '';
+                                    }
+                                }
+                            ");
+                            ?>
+
+                        <?php else: ?>
+                            <!-- Simple Product (No Options) -->
+                            <form method="POST" action="<?= $url->to('shop/cart/add') ?>">
+                                <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
+                                <input type="hidden" name="variant_id" value="0">
+
+                                <?php
+                                // Get stock for simple product
+                                $stock = $this->db->query("
+                                    SELECT COALESCE(SUM(quantity), 0) as total
+                                    FROM #__shop_inventory i
+                                    JOIN #__shop_product_variant v ON v.id = i.variant_id
+                                    WHERE v.product_id = ? AND v.deleted_at IS NULL
+                                ", [$id])->row['total'] ?? 0;
+                                ?>
+
+                                <?php if ($stock > 0): ?>
+                                    <div class="alert alert-success mb-3">
+                                        <strong>In Stock</strong> - <?= $stock ?> units available
+                                    </div>
+                                <?php else: ?>
+                                    <div class="alert alert-danger mb-3">
+                                        <strong>Out of Stock</strong>
+                                    </div>
+                                <?php endif; ?>
+
+                                <div class="input-group mb-3" style="max-width:160px;">
+                                    <label class="input-group-text">Qty</label>
+                                    <input type="number" name="quantity" class="form-control" value="1" min="1" max="<?= $stock ?: 1 ?>" <?= $stock <= 0 ? 'disabled' : '' ?>>
+                                </div>
+
+                                <button type="submit" class="btn btn-success btn-lg w-100" <?= $stock <= 0 ? 'disabled' : '' ?>>
+                                    Add to Cart
+                                </button>
+                            </form>
+                        <?php endif; ?>
+
+                    </div>
+                </div>
+            </div>
+            <?php
+        }, 'main');
     }
 }

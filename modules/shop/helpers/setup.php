@@ -6,10 +6,13 @@ use System\Library\Database;
 return new class {
     public function install(Registry $registry, Database $db): void
     {
-        // Enable transactions for atomicity (if supported)
-        $db->query("START TRANSACTION");
-
         try {
+            // Start transaction using PDO directly to avoid wrapper issues
+            $db->query("START TRANSACTION");
+
+            // ============================================================
+            // 1. Categories
+            // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_categories (
                     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -34,7 +37,7 @@ return new class {
             ");
 
             // ============================================================
-            // 6. Products
+            // 2. Products
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_product (
@@ -45,8 +48,13 @@ return new class {
                     sku VARCHAR(255) NOT NULL,
                     description LONGTEXT DEFAULT NULL,
                     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                    weight DECIMAL(10,2) DEFAULT NULL,
+                    dimensions JSON DEFAULT NULL,
                     currency CHAR(3) NOT NULL DEFAULT 'GBP',
                     tax_class VARCHAR(50) DEFAULT NULL,
+                    meta_title VARCHAR(255) DEFAULT NULL,
+                    meta_description VARCHAR(500) DEFAULT NULL,
+                    meta_keywords VARCHAR(255) DEFAULT NULL,
                     status ENUM('draft','active','archived') DEFAULT 'draft',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -63,7 +71,7 @@ return new class {
             ");
 
             // ============================================================
-            // 7. Product Images
+            // 3. Product Images
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_product_image (
@@ -82,7 +90,7 @@ return new class {
             ");
 
             // ============================================================
-            // 8. Option Groups
+            // 4. Option Groups
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_option_group (
@@ -101,7 +109,7 @@ return new class {
             ");
 
             // ============================================================
-            // 9. Option Values
+            // 5. Option Values
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_option_value (
@@ -123,7 +131,7 @@ return new class {
             ");
 
             // ============================================================
-            // 10. Product Option Groups
+            // 6. Product ↔ Option Group Link
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_product_option_group (
@@ -137,7 +145,7 @@ return new class {
             ");
 
             // ============================================================
-            // 11. Product Variants
+            // 7. Product Variants
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_product_variant (
@@ -163,7 +171,7 @@ return new class {
             ");
 
             // ============================================================
-            // 12. Variant Option Values
+            // 8. Variant ↔ Option Value Link
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_product_variant_option (
@@ -176,7 +184,7 @@ return new class {
             ");
 
             // ============================================================
-            // 13. Inventory
+            // 9. Inventory
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_inventory (
@@ -192,7 +200,7 @@ return new class {
             ");
 
             // ============================================================
-            // 14. Inventory Log
+            // 10. Inventory Log
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_inventory_log (
@@ -215,12 +223,12 @@ return new class {
             ");
 
             // ============================================================
-            // 15. Cart
+            // 11. Cart
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_cart (
                     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                    user_id INT UNSIGNED NOT NULL,
+                    user_id BIGINT UNSIGNED DEFAULT NULL,
                     session_id VARCHAR(128) DEFAULT NULL,
                     currency CHAR(3) NOT NULL DEFAULT 'GBP',
                     expires_at DATETIME DEFAULT NULL,
@@ -234,7 +242,7 @@ return new class {
             ");
 
             // ============================================================
-            // 16. Cart Items
+            // 12. Cart Items
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_cart_items (
@@ -255,11 +263,12 @@ return new class {
             ");
 
             // ============================================================
-            // 17. Orders
+            // 13. Orders
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_orders (
                     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    order_number VARCHAR(50) NOT NULL,
                     customer_id BIGINT UNSIGNED DEFAULT NULL,
                     status ENUM('pending','paid','processing','shipped','completed','cancelled','refunded') DEFAULT 'pending',
                     subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -281,6 +290,8 @@ return new class {
                     billing_postcode VARCHAR(30) DEFAULT NULL,
                     billing_country CHAR(2) DEFAULT NULL,
                     notes TEXT DEFAULT NULL,
+                    platform VARCHAR(50) DEFAULT 'web',
+                    platform_order_id VARCHAR(255) DEFAULT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     deleted_at DATETIME DEFAULT NULL,
@@ -289,12 +300,15 @@ return new class {
                     INDEX idx_status (status),
                     INDEX idx_payment_status (payment_status),
                     INDEX idx_created (created_at),
-                    INDEX idx_deleted (deleted_at)
+                    INDEX idx_deleted (deleted_at),
+                    INDEX idx_platform (platform),
+                    INDEX idx_platform_order (platform, platform_order_id),
+                    UNIQUE KEY uk_order_number (order_number)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
 
             // ============================================================
-            // 18. Order Items
+            // 14. Order Items
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_order_items (
@@ -307,18 +321,20 @@ return new class {
                     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                     subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                     options JSON DEFAULT NULL,
+                    external_id VARCHAR(255) DEFAULT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     FOREIGN KEY (order_id) REFERENCES #__shop_orders(id) ON DELETE CASCADE,
                     FOREIGN KEY (variant_id) REFERENCES #__shop_product_variant(id) ON DELETE SET NULL,
                     INDEX idx_order (order_id),
                     INDEX idx_variant (variant_id),
-                    INDEX idx_sku (sku)
+                    INDEX idx_sku (sku),
+                    INDEX idx_external (external_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
 
             // ============================================================
-            // 19. Shipments
+            // 15. Shipments
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_shipments (
@@ -341,7 +357,7 @@ return new class {
             ");
 
             // ============================================================
-            // 20. Transactions
+            // 16. Transactions
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_transactions (
@@ -366,7 +382,7 @@ return new class {
             ");
 
             // ============================================================
-            // 21. Sales Channels
+            // 17. Sales Channels
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_channel (
@@ -386,7 +402,7 @@ return new class {
             ");
 
             // ============================================================
-            // 22. Product Channel Mapping
+            // 18. Product ↔ Channel Mapping
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_channel_product (
@@ -415,7 +431,7 @@ return new class {
             ");
 
             // ============================================================
-            // 23. Channel Order Mapping
+            // 19. Channel ↔ Order Mapping
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_channel_order (
@@ -439,7 +455,7 @@ return new class {
             ");
 
             // ============================================================
-            // 24. Channel Messages
+            // 20. Channel Messages
             // ============================================================
             $db->query("
                 CREATE TABLE IF NOT EXISTS #__shop_channel_message (
@@ -464,58 +480,25 @@ return new class {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
 
-            // ============================================================
-            // SAFETY NET: Re‑create option_group & option_value tables
-            // (in case they were dropped by a previous rollback)
-            // ============================================================
-            $db->query("
-                CREATE TABLE IF NOT EXISTS #__shop_option_group (
-                    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                    name VARCHAR(100) NOT NULL,
-                    type ENUM('select','radio','color','text') DEFAULT 'select',
-                    required TINYINT(1) NOT NULL DEFAULT 0,
-                    status TINYINT(1) NOT NULL DEFAULT 1,
-                    sort_order INT NOT NULL DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (id),
-                    INDEX idx_name (name),
-                    INDEX idx_status (status)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            ");
-
-            $db->query("
-                CREATE TABLE IF NOT EXISTS #__shop_option_value (
-                    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                    group_id INT UNSIGNED NOT NULL,
-                    value VARCHAR(100) NOT NULL,
-                    color_code VARCHAR(20) DEFAULT NULL,
-                    image VARCHAR(255) DEFAULT NULL,
-                    price_adjustment DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                    price_prefix ENUM('+','-') DEFAULT '+',
-                    sort_order INT NOT NULL DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY (group_id) REFERENCES #__shop_option_group(id) ON DELETE CASCADE,
-                    INDEX idx_group (group_id),
-                    INDEX idx_sort (group_id, sort_order)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            ");
             $db->query("COMMIT");
         } catch (Exception $e) {
-            // Rollback on failure and re-throw or handle gracefully
-            $db->query("ROLLBACK");
+            // Only roll back if there's an active transaction
+            try {
+                if ($db->inTransaction()) {
+                    $db->query("ROLLBACK");
+                }
+            } catch (Exception $ex) {
+                // Ignore rollback failures — transaction may already be closed
+            }
             throw new RuntimeException("Installation failed: " . $e->getMessage());
         }
     }
 
     public function uninstall(Registry $registry, Database $db): void
     {
-        // Enable transactions for atomicity (if supported)
-        $db->query("START TRANSACTION");
-
         try {
+            $db->query("START TRANSACTION");
+
             $tables = [
                 '#__shop_channel_message',
                 '#__shop_channel_order',
@@ -545,8 +528,11 @@ return new class {
 
             $db->query("COMMIT");
         } catch (Exception $e) {
-            // Rollback on failure and re-throw or handle gracefully
-            $db->query("ROLLBACK");
+            try {
+                if ($db->inTransaction()) {
+                    $db->query("ROLLBACK");
+                }
+            } catch (Exception $ex) {}
             throw new RuntimeException("Uninstallation failed: " . $e->getMessage());
         }
     }

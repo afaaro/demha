@@ -7,7 +7,6 @@ class Request {
     private array $post;
     private array $server;
     private array $cookie;
-
     private array $routeParams = [];
     private array $all = [];
     protected array $matchedRoute = [];
@@ -18,14 +17,12 @@ class Request {
         $this->post   = $_POST;
         $this->server = $_SERVER;
         $this->cookie = $_COOKIE;
-
         $this->refreshAll();
     }
 
     /* ---------------------------------------------------------
      * Input
      * --------------------------------------------------------- */
-
     public function input(?string $key = null, $filter = null, $default = null)
     {
         return $this->retrieve($this->all, $key, $filter, $default);
@@ -36,7 +33,6 @@ class Request {
         if ($key === null) {
             return $this->retrieve($this->get, null, $filter, $default);
         }
-
         $value = $this->get[$key] ?? $this->routeParams[$key] ?? $default;
         return $this->applyFilter($value, $filter, $default);
     }
@@ -70,7 +66,6 @@ class Request {
         ) {
             return null;
         }
-
         return $_FILES[$key];
     }
 
@@ -86,7 +81,6 @@ class Request {
     /* ---------------------------------------------------------
      * Route parameters
      * --------------------------------------------------------- */
-
     public function set(string $key, mixed $value): void
     {
         $this->routeParams[$key] = $value;
@@ -128,7 +122,6 @@ class Request {
     /* ---------------------------------------------------------
      * HTTP
      * --------------------------------------------------------- */
-
     public function method(): string
     {
         return strtoupper($this->server['REQUEST_METHOD'] ?? 'GET');
@@ -143,7 +136,7 @@ class Request {
     {
         return $this->method() === 'GET';
     }
-    
+
     public function isAjax(): bool
     {
         return strtolower(
@@ -154,15 +147,12 @@ class Request {
     /* ---------------------------------------------------------
      * Client IP
      * --------------------------------------------------------- */
-
     public function ip(): string
     {
         $remote = (string) ($this->server['REMOTE_ADDR'] ?? '');
-
         if (!filter_var($remote, FILTER_VALIDATE_IP)) {
             return '0.0.0.0';
         }
-
         $trusted = array_filter(
             array_map(
                 'trim',
@@ -173,33 +163,27 @@ class Request {
             ),
             static fn ($ip) => filter_var($ip, FILTER_VALIDATE_IP)
         );
-
         if (!in_array($remote, $trusted, true)) {
             return $remote;
         }
-
         foreach ([
             'HTTP_X_FORWARDED_FOR',
             'HTTP_CLIENT_IP'
         ] as $header) {
             $value = (string) ($this->server[$header] ?? '');
-
             foreach (explode(',', $value) as $ip) {
                 $ip = trim($ip);
-
                 if (filter_var($ip, FILTER_VALIDATE_IP)) {
                     return $ip;
                 }
             }
         }
-
         return $remote;
     }
 
     /* ---------------------------------------------------------
      * Routes
      * --------------------------------------------------------- */
-
     public function getRoute(): string
     {
         return trim((string) $this->get('route', 'string', 'user/account'), '/');
@@ -209,17 +193,14 @@ class Request {
     {
         $current = trim($this->getRoute(), '/');
         $route   = trim($route, '/');
-
         if (str_contains($route, '*')) {
             $pattern = '#^' . str_replace(
                 '\*',
                 '.*',
                 preg_quote($route, '#')
             ) . '$#';
-
             return preg_match($pattern, $current) === 1;
         }
-
         return $current === $route;
     }
 
@@ -232,11 +213,9 @@ class Request {
     /* ---------------------------------------------------------
      * URL
      * --------------------------------------------------------- */
-
     public function getBaseUrl(): string
     {
         $host = $this->safeHost();
-
         return ($this->isSecure() ? 'https' : 'http')
             . '://' . $host
             . rtrim($this->getBasePath(), '/')
@@ -261,7 +240,6 @@ class Request {
     /* ---------------------------------------------------------
      * Internal
      * --------------------------------------------------------- */
-
     private function refreshAll(): void
     {
         $this->all = array_merge(
@@ -283,35 +261,44 @@ class Request {
                 $filter ?? 'string'
             );
         }
-
         $value = $source[$key] ?? $default;
         return $this->applyFilter($value, $filter, $default);
     }
 
     /**
      * Apply a filter to a value.
-     *
-     * @param mixed $value   The value to filter (may be null, string, array, etc.)
-     * @param mixed $filter  Filter definition (string, int, or array with 'filter' and 'options')
-     * @param mixed $default Default value if filtering fails or value is empty/null
-     * @return mixed
      */
     protected function applyFilter(mixed $value, mixed $filter, mixed $default = null)
     {
-        // If value is null or an empty string, immediately return the default
+        // If value is null or empty string, return default
         if ($value === null || $value === '') {
             return $default;
         }
 
-        // If value is an array, recursively filter it
+        // Get filter config first
+        $config = $this->normalizeFilter($filter);
+        $type   = $config['type'] ?? null;
+        $opts   = $config['options'] ?? [];
+
+        // Special: 'array' filter — return/recurse without casting
+        if ($type === 'array') {
+            if (!is_array($value)) {
+                return $default;
+            }
+            if (!empty($opts['recursive'])) {
+                $subFilter = $opts['filter'] ?? 'string';
+                return $this->filterArray($value, $subFilter);
+            }
+            return $value;
+        }
+
+        // Array values: auto-recurse with given filter
         if (is_array($value)) {
             return $this->filterArray($value, $filter);
         }
 
-        // Ensure value is a string for further processing
         $value = (string) $value;
 
-        $config = $this->normalizeFilter($filter);
         if (!$config) {
             return htmlspecialchars(
                 trim($value),
@@ -320,84 +307,62 @@ class Request {
             );
         }
 
-        $type    = $config['type'];
-        $options = $config['options'];
-
         return match ($type) {
             'raw' => $value,
-
             'string' => htmlspecialchars(
                 trim($value),
                 ENT_QUOTES | ENT_SUBSTITUTE,
                 'UTF-8'
             ),
-
             'text' => trim(strip_tags($value)),
-
             'int', 'integer' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_INT,
-                    ['options' => $options]
+                    ['options' => $opts]
                 )) !== false) ? $v : $default,
-
             'float', 'double' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_FLOAT
                 )) !== false) ? $v : $default,
-
             'bool', 'boolean' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_BOOLEAN,
                     FILTER_NULL_ON_FAILURE
                 )) !== null) ? $v : $default,
-
             'email' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_EMAIL
                 )) !== false) ? $v : $default,
-
             'url' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_URL
                 )) !== false) ? $v : $default,
-
             'ip' =>
                 (($v = filter_var(
                     $value,
                     FILTER_VALIDATE_IP
                 )) !== false) ? $v : $default,
-
             'alnum' => $this->cleanAlnum($value, $default),
-
             'slug' => $this->cleanSlug($value, $default),
-
-            'array' => is_array($value)
-                ? (
-                    !empty($options['recursive'])
-                        ? $this->filterArray(
-                            $value,
-                            $options['recursive']
-                        )
-                        : $value
-                )
-                : $default,
-
             default =>
                 (($v = filter_var(
                     $value,
                     $type,
-                    ['options' => $options]
+                    ['options' => $opts]
                 )) !== false && $v !== null)
                     ? $v
                     : $default,
         };
     }
 
+    /**
+     * Recursively filter an array using the given filter spec
+     */
     private function filterArray(array $data, mixed $filter): array
     {
         $result = [];
@@ -409,39 +374,33 @@ class Request {
         return $result;
     }
 
+    /**
+     * Normalize any filter format into [type, options]
+     */
     private function normalizeFilter(mixed $filter): ?array
     {
         if (is_string($filter) || is_int($filter)) {
             return [
-                'type' => is_string($filter)
-                    ? strtolower($filter)
-                    : $filter,
-                'options' => []
+                'type'    => is_string($filter) ? strtolower($filter) : $filter,
+                'options' => [],
             ];
         }
-
         if (!is_array($filter) || !isset($filter['filter'])) {
-            return null;
+            return [
+                'type'    => 'string',
+                'options' => [],
+            ];
         }
-
         $type = $filter['filter'];
         return [
-            'type' => is_string($type)
-                ? strtolower($type)
-                : $type,
-            'options' => is_array($filter['options'] ?? null)
-                ? $filter['options']
-                : []
+            'type'    => is_string($type) ? strtolower($type) : $type,
+            'options' => is_array($filter['options'] ?? null) ? $filter['options'] : [],
         ];
     }
 
     private function cleanAlnum(string $value, ?string $default = null): ?string
     {
-        $value = preg_replace(
-            '/[^a-zA-Z0-9]/',
-            '',
-            $value
-        );
+        $value = preg_replace('/[^a-zA-Z0-9]/', '', $value);
         return $value !== '' ? $value : $default;
     }
 
@@ -455,9 +414,7 @@ class Request {
     private function safeHost(): string
     {
         $host = (string) ($this->server['HTTP_HOST'] ?? '');
-
         $host = preg_replace('/:\d+$/', '', $host);
-
         if (
             $host === ''
             || strlen($host) > 253
@@ -469,7 +426,6 @@ class Request {
         ) {
             return 'localhost';
         }
-
         return strtolower($host);
     }
 }

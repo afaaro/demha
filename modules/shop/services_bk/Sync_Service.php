@@ -290,7 +290,7 @@ class Sync_Service
                         $orderData['currency']
                     ]
                 );
-                $internalOrderId = $this->db->lastInsertId();
+                $internalOrderId = $this->db->insert_id();
 
                 // Insert order items
                 foreach ($externalOrder['items'] ?? [] as $item) {

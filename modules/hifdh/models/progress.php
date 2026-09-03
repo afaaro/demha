@@ -146,7 +146,7 @@ class HifdhProgressModel extends Model
                     $data['review_date']
                 ]
             );
-            $id = (int)$this->db->insertId();
+            $id = (int)$this->db->insert_id();
         }
 
         return $this->getById($id);

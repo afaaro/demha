@@ -6,11 +6,11 @@ use System\Library\Notify;
 class ShopAdminProduct extends Controller {
     public function indexAction(): void
     {
-
         $sql = "SELECT p.*, c.name as category_name,
-                (SELECT SUM(i.quantity) FROM #__shop_inventory i JOIN #__shop_product_variant v ON i.variant_id = v.id WHERE v.product_id = p.id) as total_stock
-                FROM #__shop_product p
-                LEFT JOIN #__shop_categories c ON p.category_id = c.id
+                    (SELECT SUM(i.quantity) FROM shop_inventory i JOIN shop_product_variant v ON i.variant_id = v.id WHERE v.product_id = p.id) as total_stock
+                FROM shop_product p
+                LEFT JOIN shop_categories c ON p.category_id = c.id
+                WHERE p.deleted_at IS NULL
                 ORDER BY p.id DESC";
         $products = $this->db->query($sql)->rows;
 
@@ -34,8 +34,8 @@ class ShopAdminProduct extends Controller {
                 </tr></thead>";
                 echo "<tbody>";
                 foreach ($products as $p) {
-                    $firstVariant = $this->db->query(
-                        "SELECT id FROM #__shop_product_variant WHERE product_id = ? LIMIT 1",
+                    $firstVariant = $view->db->query(
+                        "SELECT id FROM shop_product_variant WHERE product_id = ? AND deleted_at IS NULL LIMIT 1",
                         [$p['id']]
                     )->row;
                     $vId = $firstVariant['id'] ?? 0;
@@ -62,7 +62,6 @@ class ShopAdminProduct extends Controller {
                 echo "</div>";
             }
 
-            // Inline JS for stock update
             $ajaxUrl = $view->url->to('shop/admin/product/updateStockAjax');
             $view->doc->addInlineJs("
                 document.addEventListener('click', function(e) {
@@ -72,7 +71,6 @@ class ShopAdminProduct extends Controller {
                         const id = input.dataset.id;
                         const qty = input.value;
                         if (!id) return;
-
                         fetch('{$ajaxUrl}', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -96,28 +94,21 @@ class ShopAdminProduct extends Controller {
         }, 'admin');
     }
 
-    // ==============================
-    // Add Product (redirects to edit)
-    // ==============================
-
     public function addAction(): void
     {
         $this->editAction();
     }
 
-    // ==============================
-    // Edit / Create Product
-    // ==============================
     public function editAction(): void
     {
-        $id = (int) $this->request->route('id', 'int', 0);
+        $id = (int) $this->request->get('id', 'int', 0);
 
         if ($this->request->isPost()) {
             $this->saveProduct($id);
             return;
         }
 
-        $product = $id ? $this->db->findOne('shop_product', $id) : [];
+        $product = $id ? $this->db->query("SELECT * FROM shop_product WHERE id = ?", [$id])->row : [];
         if ($id && !$product) {
             Notify::error('Product not found.');
             redirect($this->url->to('shop/admin/product'));
@@ -125,28 +116,19 @@ class ShopAdminProduct extends Controller {
         }
 
         $variants = $this->getVariantsWithAttributes($id);
-        $groups = $this->db->query("
-            SELECT * FROM #__shop_option_group
-            ORDER BY name ASC
-        ")->rows;
+        $groups = $this->db->query("SELECT * FROM shop_option_group ORDER BY name ASC")->rows;
 
         $selectedGroups = [];
         if ($id) {
-            $rows = $this->db->query("
-                SELECT group_id FROM #__shop_product_option_group WHERE product_id = ?
-            ", [$id])->rows;
+            $rows = $this->db->query("SELECT group_id FROM shop_product_option_group WHERE product_id = ?", [$id])->rows;
             $selectedGroups = array_column($rows, 'group_id');
         }
 
         $categoryOptions = $this->getCategoryOptions();
-
-        // Capture form and controller instance
         $form = $this->form;
         $controller = $this;
 
         echo $this->view->inline(function ($view) use ($product, $variants, $groups, $id, $categoryOptions, $selectedGroups, $form, $controller) {
-            echo Notify::read();
-
             echo "<div class='card shadow-sm'>";
             echo "<div class='card-header bg-white py-3'>";
             echo "<h5 class='mb-0'>" . ($id ? 'Edit Product: ' . htmlspecialchars($product['name']) : 'Add New Product') . "</h5>";
@@ -154,7 +136,6 @@ class ShopAdminProduct extends Controller {
             echo "<div class='card-body'>";
             echo $form->start(['method' => 'POST']);
 
-            // ---- Basic Product Fields ----
             echo "<div class='row mb-4'>";
             echo "<div class='col-md-6'>";
             echo $form->input('name', [
@@ -184,7 +165,6 @@ class ShopAdminProduct extends Controller {
             echo "</div>";
             echo "</div>";
 
-            // ---- Option Groups Selection ----
             if (!empty($groups)) {
                 echo "<hr>";
                 echo "<h5 class='mb-3'>Option Groups (Attributes)</h5>";
@@ -202,19 +182,15 @@ class ShopAdminProduct extends Controller {
                 echo "<p class='text-muted small'>Select the attribute groups that apply to this product.</p>";
             }
 
-            // ---- Variants Section ----
             echo "<hr>";
             echo "<div id='variant-area'>";
             echo "<h5 class='mb-3'>SKU Variants & Parameters</h5>";
-
             if (!empty($variants)) {
                 foreach ($variants as $vIndex => $v) {
-                    // Call the method via $controller
                     echo $controller->renderVariantRow($vIndex, $v, $groups);
                 }
             }
-
-            echo "</div>"; // end variant-area
+            echo "</div>";
 
             echo "<div class='mt-4 d-flex justify-content-between'>";
             echo "<button type='button' class='btn btn-outline-dark' onclick='addNewVariantRow()'>+ Add New SKU Variant</button>";
@@ -227,7 +203,6 @@ class ShopAdminProduct extends Controller {
             echo $form->end();
             echo "</div></div>";
 
-            // ---- JavaScript ----
             $groupJson = json_encode($groups);
             $view->doc->addInlineJs("
                 window.vCounter = " . (empty($variants) ? 0 : max(array_keys($variants)) + 1) . ";
@@ -261,8 +236,7 @@ class ShopAdminProduct extends Controller {
                             <div class='text-end mt-2'>
                                 <button type='button' class='btn btn-outline-danger btn-sm' onclick='this.closest(\".variant-item\").remove()'>Remove Variant</button>
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                     container.insertAdjacentHTML('beforeend', html);
                     window.vCounter++;
                 }
@@ -279,8 +253,7 @@ class ShopAdminProduct extends Controller {
                                 <option value=''>-- Value --</option>
                             </select>
                             <button type='button' class='btn-close ms-1' onclick='this.parentElement.remove()'></button>
-                        </div>
-                    `;
+                        </div>`;
                     list.insertAdjacentHTML('beforeend', html);
                 }
 
@@ -301,10 +274,6 @@ class ShopAdminProduct extends Controller {
         }, 'admin');
     }
 
-    // ==============================
-    // Fetch Option Values (AJAX)
-    // ==============================
-
     public function getValuesAction(): void
     {
         $groupId = (int) $this->request->get('group_id', 'int', 0);
@@ -312,13 +281,9 @@ class ShopAdminProduct extends Controller {
             $this->json(['error' => 'Invalid group ID']);
             return;
         }
-        $values = $this->db->find('shop_option_value', ['group_id' => $groupId], 'value ASC');
+        $values = $this->db->query("SELECT id, value FROM #__shop_option_value WHERE group_id = ? ORDER BY sort_order, value", [$groupId])->rows;
         $this->json($values);
     }
-
-    // ==============================
-    // Delete Product
-    // ==============================
 
     public function deleteAction(): void
     {
@@ -328,55 +293,35 @@ class ShopAdminProduct extends Controller {
             redirect($this->url->to('shop/admin/product'));
             return;
         }
-
-        // Soft delete (set deleted_at)
-        $this->db->update('shop_product', ['deleted_at' => date('Y-m-d H:i:s')], ['id' => $id]);
+        $this->db->query("UPDATE #__shop_product SET deleted_at = NOW() WHERE id = ?", [$id]);
         Notify::success('Product deleted.');
         redirect($this->url->to('shop/admin/product'));
     }
 
-    // ==============================
-    // AJAX: Quick Stock Update
-    // ==============================
     public function updateStockAjaxAction(): void
     {
         $variantId = (int) $this->request->post('variant_id', 'int', 0);
         $newQty = (int) $this->request->post('quantity', 'int', 0);
-
         if (!$variantId) {
             $this->json(['status' => 'error', 'message' => 'Invalid variant']);
             return;
         }
-
-        $current = $this->db->query(
-            "SELECT quantity FROM #__shop_inventory WHERE variant_id = ?",
-            [$variantId]
-        )->row;
+        $current = $this->db->query("SELECT quantity FROM #__shop_inventory WHERE variant_id = ?", [$variantId])->row;
         if (!$current) {
             $this->json(['status' => 'error', 'message' => 'Variant not found in inventory']);
             return;
         }
-
         $diff = $newQty - (int)$current['quantity'];
         if ($diff !== 0) {
             $this->adjustStock($variantId, $diff, 'Quick update from list');
         }
-
         $this->json(['status' => 'success', 'new_stock' => $newQty]);
     }
 
-    // ==============================
-    // Helpers
-    // ==============================
-
-    /**
-     * Fetch product variants with their attribute values.
-     */
     private function getVariantsWithAttributes(int $productId): array
     {
         if (!$productId) return [];
-
-        $variants = $this->db->find('shop_product_variant', ['product_id' => $productId], 'id ASC');
+        $variants = $this->db->query("SELECT * FROM #__shop_product_variant WHERE product_id = ? AND deleted_at IS NULL ORDER BY id ASC", [$productId])->rows;
         foreach ($variants as &$v) {
             $v['attributes'] = $this->db->query("
                 SELECT v.group_id, v.id as value_id, v.value as value_name
@@ -388,16 +333,10 @@ class ShopAdminProduct extends Controller {
         return $variants;
     }
 
-    /**
-     * Render a single variant row (used in edit view).
-     */
     private function renderVariantRow(int $index, array $variant, array $groups): string
     {
-        // Get stock from inventory table
-        $stock = $this->db->query(
-            "SELECT quantity FROM #__shop_inventory WHERE variant_id = ?",
-            [$variant['id']]
-        )->value ?? 0;
+        $stock = $this->db->query("SELECT quantity FROM #__shop_inventory WHERE variant_id = ?", [$variant['id']])->row;
+        $stockQty = (int)($stock['quantity'] ?? 0);
 
         $html = '<div class="variant-item border rounded p-3 mb-3 bg-light">';
         $html .= '<div class="row g-3 align-items-start">';
@@ -411,7 +350,7 @@ class ShopAdminProduct extends Controller {
         $html .= '</div>';
         $html .= '<div class="col-md-2">';
         $html .= '<label class="small fw-bold">Current Stock</label>';
-        $html .= '<input type="number" name="variants[' . $index . '][stock]" class="form-control form-control-sm" value="' . (int)$stock . '">';
+        $html .= '<input type="number" name="variants[' . $index . '][stock]" class="form-control form-control-sm" value="' . $stockQty . '">';
         $html .= '</div>';
         $html .= '<div class="col-md-5">';
         $html .= '<label class="small fw-bold">Attributes (Params)</label>';
@@ -441,13 +380,10 @@ class ShopAdminProduct extends Controller {
         return $html;
     }
 
-    /**
-     * Save product and variants (create or update).
-     */
     private function saveProduct(int $productId): void
     {
         try {
-            $this->db->beginTransaction();
+            $this->db->query("START TRANSACTION");
 
             $name = $this->request->post('name', 'string', '');
             $baseSku = $this->request->post('sku', 'string', '');
@@ -459,220 +395,199 @@ class ShopAdminProduct extends Controller {
                 throw new \Exception('Product name is required.');
             }
 
-            // Insert or update product
+            // Insert/Update product
             if ($productId) {
-                $this->db->update('shop_product', [
-                    'name' => $name,
-                    'slug' => $slug,
-                    'sku' => $baseSku,
-                    'price' => $basePrice,
-                    'category_id' => $categoryId ?: null,
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ], ['id' => $productId]);
+                $this->db->query("UPDATE #__shop_product SET name=?, slug=?, sku=?, price=?, category_id=?, updated_at=NOW() WHERE id=?",
+                    [$name, $slug, $baseSku, $basePrice, $categoryId ?: null, $productId]);
             } else {
-                $this->db->insert('shop_product', [
-                    'name' => $name,
-                    'slug' => $slug,
-                    'sku' => $baseSku,
-                    'price' => $basePrice,
-                    'category_id' => $categoryId ?: null,
-                    'status' => 'draft',
-                    'created_at' => date('Y-m-d H:i:s'),
-                ]);
+                $this->db->query("INSERT INTO #__shop_product (name,slug,sku,price,category_id,status,created_at) VALUES (?,?,?,?,?,'draft',NOW())",
+                    [$name, $slug, $baseSku, $basePrice, $categoryId ?: null]);
                 $productId = $this->db->insert_id();
             }
 
             // ---- Save option groups ----
-            $optionGroups = $this->request->post('option_groups', 'array', []);
-            $this->db->delete('shop_product_option_group', ['product_id' => $productId]);
+            $optionGroups = $this->request->post('option_groups') ?: [];
+            $this->db->query("DELETE FROM #__shop_product_option_group WHERE product_id=?", [$productId]);
             foreach ($optionGroups as $gid) {
                 if ((int)$gid > 0) {
-                    $this->db->insert('shop_product_option_group', [
-                        'product_id' => $productId,
-                        'group_id'   => (int)$gid,
-                    ]);
+                    $this->db->query("INSERT INTO #__shop_product_option_group (product_id,group_id) VALUES (?,?)", [$productId, (int)$gid]);
+                }
+            }
+
+            // ---- Get group order ----
+            $rows = $this->db->query("
+                SELECT pog.group_id
+                FROM #__shop_product_option_group pog
+                JOIN #__shop_option_group og ON og.id = pog.group_id
+                WHERE pog.product_id = ?
+                ORDER BY og.sort_order ASC, og.id ASC
+            ", [$productId])->rows;
+            $groupOrder = array_column($rows, 'group_id');
+
+            // ---- Build value_id → group_id map ----
+            $valueGroupMap = [];
+            if (!empty($groupOrder)) {
+                $placeholders = implode(',', array_fill(0, count($groupOrder), '?'));
+                $valueRows = $this->db->query("
+                    SELECT ov.id AS value_id, ov.group_id
+                    FROM #__shop_option_value ov
+                    WHERE ov.group_id IN ($placeholders)
+                ", $groupOrder)->rows;
+                foreach ($valueRows as $row) {
+                    $valueGroupMap[$row['value_id']] = $row['group_id'];
                 }
             }
 
             // ---- Process variants ----
-            $variants = $this->request->post('variants', 'array', []);
+            $variants = $this->request->post('variants');
+            if (!is_array($variants)) {
+                $variants = [];
+            }
+
+            // --- DEBUG: Log what we're receiving ---
+            error_log('Variants POST: ' . print_r($variants, true));
+
             $processedIds = [];
+            $usedSkus = [];
 
             foreach ($variants as $v) {
                 if (empty($v['sku'])) continue;
 
-                // Check SKU collision
-                $existing = $this->db->first('shop_product_variant', ['sku' => $v['sku']]);
+                // 1. Check duplicate SKU within this product
+                if (in_array($v['sku'], $usedSkus)) {
+                    throw new \Exception("Duplicate SKU '{$v['sku']}' found in variants. Please use unique SKUs.");
+                }
+                $usedSkus[] = $v['sku'];
+
+                // 2. Check SKU collision with other products (only if it's a new variant)
+                $existing = $this->db->query("SELECT * FROM #__shop_product_variant WHERE sku = ?", [$v['sku']])->row;
                 if ($existing && (int)$existing['product_id'] !== $productId) {
                     throw new \Exception("SKU collision: '{$v['sku']}' belongs to another product.");
                 }
 
-                $price = !empty($v['price']) ? (float)$v['price'] : null;
+                $price = !empty($v['price']) ? (float)$v['price'] : $basePrice;
                 $stock = (int)($v['stock'] ?? 0);
 
+                // ---- Sort values into SAME ORDER as groups ----
+                $rawValueIds = array_map('intval', array_filter($v['values'] ?? [], fn($id) => !empty($id)));
+                $sortedValueIds = [];
+                foreach ($groupOrder as $gid) {
+                    foreach ($rawValueIds as $vid) {
+                        if (isset($valueGroupMap[$vid]) && $valueGroupMap[$vid] == $gid) {
+                            $sortedValueIds[] = $vid;
+                        }
+                    }
+                }
+                // Include any remaining values that might not be in the map
+                $remaining = array_diff($rawValueIds, $sortedValueIds);
+                $sortedValueIds = array_merge($sortedValueIds, $remaining);
+
+                // --- DEBUG: Log what we're processing ---
+                error_log("Processing variant SKU: {$v['sku']}, Values: " . implode(',', $sortedValueIds));
+
+                // 3. Update or Insert variant
                 if ($existing && (int)$existing['product_id'] === $productId) {
+                    // Update existing variant
                     $variantId = $existing['id'];
-                    // Update variant (no stock column)
-                    $this->db->update('shop_product_variant', [
-                        'price' => $price,
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ], ['id' => $variantId]);
-                    // Update inventory
-                    $currentStock = $this->db->query(
-                        "SELECT quantity FROM #__shop_inventory WHERE variant_id = ?",
-                        [$variantId]
-                    )->value ?? 0;
-                    $diff = $stock - (int)$currentStock;
+                    $this->db->query("UPDATE #__shop_product_variant SET sku=?, price=?, updated_at=NOW() WHERE id=?",
+                        [$v['sku'], $price, $variantId]);
+
+                    // Update stock
+                    $currentStock = $this->db->query("SELECT quantity FROM #__shop_inventory WHERE variant_id=?", [$variantId])->row;
+                    $curQty = (int)($currentStock['quantity'] ?? 0);
+                    $diff = $stock - $curQty;
                     if ($diff !== 0) {
                         $this->adjustStock($variantId, $diff, 'Manual adjustment via edit');
                     }
                 } else {
                     // Insert new variant
-                    $this->db->insert('shop_product_variant', [
-                        'product_id' => $productId,
-                        'sku' => $v['sku'],
-                        'price' => $price,
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ]);
+                    $this->db->query("INSERT INTO #__shop_product_variant (product_id,sku,price,created_at) VALUES (?,?,?,NOW())",
+                        [$productId, $v['sku'], $price]);
                     $variantId = $this->db->insert_id();
-                    // Insert inventory row
-                    $this->db->insert('shop_inventory', [
-                        'variant_id' => $variantId,
-                        'quantity' => $stock,
-                        'reserved' => 0,
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
-                    if ($stock > 0) {
-                        $this->adjustStock($variantId, $stock, 'Initial stock creation');
-                    }
+                    $this->db->query("INSERT INTO #__shop_inventory (variant_id,quantity,reserved,updated_at) VALUES (?,?,0,NOW())",
+                        [$variantId, $stock]);
                 }
 
                 $processedIds[] = $variantId;
 
-                // Sync attribute values
-                $this->db->delete('shop_product_variant_option', ['variant_id' => $variantId]);
-                if (!empty($v['values'])) {
-                    foreach ($v['values'] as $valueId) {
-                        if (!$valueId) continue;
-                        $this->db->insert('shop_product_variant_option', [
-                            'variant_id' => $variantId,
-                            'value_id' => (int)$valueId,
-                        ]);
-                    }
+                // ---- Re-insert values in correct order ----
+                $this->db->query("DELETE FROM #__shop_product_variant_option WHERE variant_id=?", [$variantId]);
+                foreach ($sortedValueIds as $valueId) {
+                    $this->db->query("INSERT INTO #__shop_product_variant_option (variant_id,value_id) VALUES (?,?)", [$variantId, $valueId]);
                 }
             }
 
-            // Delete variants that were removed (hard delete)
+            // ---- Delete removed variants ----
             if (!empty($processedIds)) {
                 $placeholders = implode(',', array_fill(0, count($processedIds), '?'));
-                $this->db->query(
-                    "DELETE FROM #__shop_product_variant WHERE product_id = ? AND id NOT IN ($placeholders)",
-                    array_merge([$productId], $processedIds)
-                );
+                $params = array_merge([$productId], $processedIds);
+                $this->db->query("DELETE FROM #__shop_product_variant WHERE product_id = ? AND id NOT IN ($placeholders)", $params);
             } else {
-                $this->db->delete('shop_product_variant', ['product_id' => $productId]);
+                $this->db->query("DELETE FROM #__shop_product_variant WHERE product_id=?", [$productId]);
             }
 
-            $this->db->commit();
+            $this->db->query("COMMIT");
             Notify::success('Product saved successfully.');
             redirect($this->url->to('shop/admin/product'));
+
         } catch (\Exception $e) {
-            $this->db->rollBack();
-            $this->logger?->error('Product save failed: ' . $e->getMessage());
+            $this->db->query("ROLLBACK");
             Notify::error($e->getMessage());
             redirect($this->url->to($productId ? 'shop/admin/product/edit' : 'shop/admin/product/add', $productId ? ['id' => $productId] : []));
         }
     }
 
-    /**
-     * Adjust stock and log the change.
-     */
     private function adjustStock(int $variantId, int $change, string $reason = 'Manual Adjustment'): void
     {
-        $current = $this->db->query(
-            "SELECT quantity FROM #__shop_inventory WHERE variant_id = ?",
-            [$variantId]
-        )->row;
+        $current = $this->db->query("SELECT quantity FROM #__shop_inventory WHERE variant_id = ?", [$variantId])->row;
+        $oldQty = $current ? (int)$current['quantity'] : 0;
+        $newQty = $oldQty + $change;
+
         if ($current) {
-            $newQty = (int)$current['quantity'] + $change;
-            $this->db->update('shop_inventory', [
-                'quantity' => $newQty,
-                'updated_at' => date('Y-m-d H:i:s'),
-            ], ['variant_id' => $variantId]);
+            $this->db->query("UPDATE #__shop_inventory SET quantity=?, updated_at=NOW() WHERE variant_id=?", [$newQty, $variantId]);
         } else {
-            // If no inventory row exists, create one
-            $this->db->insert('shop_inventory', [
-                'variant_id' => $variantId,
-                'quantity' => $change,
-                'reserved' => 0,
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
+            $this->db->query("INSERT INTO #__shop_inventory (variant_id,quantity,reserved,updated_at) VALUES (?,?,0,NOW())", [$variantId, $newQty]);
         }
-        $this->db->insert('shop_inventory_log', [
-            'variant_id' => $variantId,
-            'change_qty' => $change,
-            'reason' => $reason,
-            'stock_before' => $current ? $current['quantity'] : 0,
-            'stock_after' => ($current ? $current['quantity'] : 0) + $change,
-            'created_at' => date('Y-m-d H:i:s'),
-        ]);
+
+        $this->db->query("INSERT INTO #__shop_inventory_log (variant_id,change_qty,reason,stock_before,stock_after,created_at) VALUES (?,?,?,?,?,NOW())",
+            [$variantId, $change, $reason, $oldQty, $newQty]);
     }
 
-    /**
-     * Generate a unique slug.
-     */
     private function generateSlug(string $name, ?int $excludeId = null): string
     {
         $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
         $original = $slug;
         $counter = 1;
         while (true) {
-            $existing = $this->db->first('shop_product', ['slug' => $slug]);
-            if (!$existing || ($excludeId && (int)$existing['id'] === $excludeId)) {
-                break;
-            }
+            $existing = $this->db->query("SELECT id FROM #__shop_product WHERE slug=?", [$slug])->row;
+            if (!$existing || ($excludeId && (int)$existing['id'] === $excludeId)) break;
             $slug = $original . '-' . $counter++;
         }
         return $slug;
     }
 
-    // ==============================
-    // Category Helpers
-    // ==============================
-
-    /**
-     * Get category options for select dropdown (indented for hierarchy).
-     */
     private function getCategoryOptions(): array
     {
-        $categories = $this->db->find('shop_categories', [], 'sort_order ASC, name ASC');
+        $categories = $this->db->query("SELECT * FROM #__shop_categories WHERE deleted_at IS NULL ORDER BY sort_order ASC, name ASC")->rows;
         $tree = $this->buildCategoryTree($categories);
         $options = ['' => '— None —'];
         $this->flattenCategoryTree($tree, $options);
         return $options;
     }
 
-    /**
-     * Build a hierarchical tree from a flat list of categories.
-     */
     private function buildCategoryTree(array $categories, int $parentId = 0): array
     {
         $branch = [];
         foreach ($categories as $cat) {
-            if ((int)$cat['parent_id'] === $parentId && empty($cat['deleted_at'])) {
+            if ((int)$cat['parent_id'] === $parentId) {
                 $children = $this->buildCategoryTree($categories, (int)$cat['id']);
-                if ($children) {
-                    $cat['children'] = $children;
-                }
+                if ($children) $cat['children'] = $children;
                 $branch[] = $cat;
             }
         }
         return $branch;
     }
 
-    /**
-     * Flatten tree into options array with indentation.
-     */
     private function flattenCategoryTree(array $tree, array &$options, int $depth = 0): void
     {
         $indent = str_repeat('—', $depth) . ' ';
@@ -684,9 +599,6 @@ class ShopAdminProduct extends Controller {
         }
     }
 
-    /**
-     * Helper to output JSON.
-     */
     private function json(array $data): void
     {
         header('Content-Type: application/json');

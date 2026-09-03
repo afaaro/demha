@@ -263,6 +263,11 @@ class Database
         return (int) $this->pdo->lastInsertId();
     }
 
+    public function insert_id(): int
+    {
+        return $this->getLastId();
+    }
+    
     public function escape(?string $value): string
     {
         if ($value === null) {

@@ -94,5 +94,6 @@ return new class {
         $db->query("DROP TABLE IF EXISTS `#__news`");
         $db->query("DROP TABLE IF EXISTS `#__news_tags`");
         $db->query("DROP TABLE IF EXISTS `#__news_categories`");
+        $db->query("DROP TABLE IF EXISTS `#__news_views`");
     }
 };

@@ -89,6 +89,11 @@ class HifdhStudentModel extends Model
                 ]
             );
         } else {
+            $exist = $this->db->query("SELECT id FROM {$this->table} WHERE name = ? AND teacher_id = ?", [$data['name'], $data['teacher_id'] ?? null])->row;
+            if ($exist) {
+                throw new Exception('A student with this name already exists for the selected teacher.');
+            }
+            
             $this->db->query(
                 "INSERT INTO {$this->table}
                     (teacher_id, name, age, level, target_juz, start_date, notes, status)
@@ -104,7 +109,7 @@ class HifdhStudentModel extends Model
                     $data['status'] ?? 'active'
                 ]
             );
-            $id = (int)$this->db->insertId();
+            $id = (int)$this->db->insert_id();
         }
         return $this->getById($id);
     }

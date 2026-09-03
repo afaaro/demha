@@ -68,7 +68,7 @@ class HifdhTeacherModel extends Model
                     $data['status'] ?? 'active'
                 ]
             );
-            $id = (int)$this->db->insertId();
+            $id = (int)$this->db->insert_id();
         }
         return $this->getById($id);
     }
