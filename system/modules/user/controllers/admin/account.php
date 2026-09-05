@@ -155,7 +155,7 @@ class UserAdminAccount extends Controller
 
 	public function editAction(): void
 	{
-		$userId = (int) $this->request->route('id', 0);
+		$userId = (int) $this->request->get('id', 'int', 0);
 		if ($userId <= 0) {
 			redirect_to('user/admin/account');
 		}
@@ -189,24 +189,23 @@ class UserAdminAccount extends Controller
 				$lastName = trim((string) $this->request->post('last_name', 'raw', ''));
 				$status = (int) $this->request->post('status', 'int', 1);
 				$password = (string) $this->request->post('password', 'raw', '');
+				$user_groups = $this->request->post('user_groups');
+				$user_groups = array_values(array_unique(array_map('intval', array_filter($user_groups, 'is_numeric'))));
 
 				$update = [
 					'email' => $email,
 					'first_name' => $firstName !== '' ? $firstName : null,
 					'last_name' => $lastName !== '' ? $lastName : null,
 					'status' => $status,
+					'user_groups' => json_encode($user_groups, JSON_UNESCAPED_SLASHES),
 					'updated_at' => date('Y-m-d H:i:s'),
 				];
 
 				if ($password !== '') {
 					$update['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
 				}
-
+				
 				$this->db->update('users', $update, ['id' => $userId]);
-
-				$groupIds = $this->request->post('groups', 'array', []);
-				$groupIds = is_array($groupIds) ? array_map('intval', $groupIds) : [];
-				$this->auth->syncUserGroups($userId, $groupIds);
 
 				redirect_to('user/admin/account');
 			}
@@ -259,10 +258,11 @@ class UserAdminAccount extends Controller
 			echo '<h3 class="h5 mb-3">Groups</h3>';
 			foreach ($allGroups as $group) {
 				$id = (int) ($group['id'] ?? 0);
-				echo $form->checkbox('groups[]', [
+				
+				echo $form->checkbox('user_groups[]', [
 					'label' => (string) ($group['label'] ?? $group['name'] ?? ''),
-					'value' => (string) $id,
-					'checked' => in_array($id, $selectedGroups, true),
+					'value' => (string) $id,          // "1", "2", "3" (string)
+					'checked' => in_array($id, $selectedGroups, true), // ✅ INT === INT
 					'no_hidden' => true,
 				]);
 			}

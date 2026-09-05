@@ -598,7 +598,6 @@ class Auth
 
         $this->user = $user;
         $groupIds = $this->decodeGroupIds($user['user_groups'] ?? null);
-
         foreach ($groupIds as $groupId) {
             $group = $this->groupById($groupId);
             if (!$group) {

@@ -126,7 +126,7 @@ class UserAdminRole extends Controller
 
 	public function editAction(): void
 	{
-		$groupId = (int) $this->request->route('id', 0);
+		$groupId = (int) $this->request->get('id', 'int', 0);
 		if ($groupId <= 0) {
 			redirect_to('user/admin/role');
 		}

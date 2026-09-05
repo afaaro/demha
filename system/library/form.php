@@ -481,31 +481,46 @@ class Form {
             case 'checkbox':
             case 'radio':
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-check-input');
-                $checked = $attributes['checked'] ?? false;
-                $checkboxValue = (string)($attributes['value'] ?? '1');
 
-                // ✅ Properly handle ALL truthy values from fill() / DB
-                if ($value !== null && $value !== '') {
-                    $valueStr = (string)$value;
-                    // Match accepted values SAME as your validation rules
-                    $isTruthy = in_array($valueStr, ['1', 'true', 'on', 'yes'], true) || $value === true;
-                    
-                    // Either: truthy matches default value, OR exact match
-                    $checked = $isTruthy || $valueStr === $checkboxValue;
+                // Get value
+                $checkboxValue = isset($attributes['value']) 
+                    ? (string)$attributes['value'] 
+                    : ((string)$value ?: '1');
+
+                // PRIORITY: Respect EXPLICIT 'checked' attribute FIRST
+                if (isset($attributes['checked'])) {
+                    // Use exactly what was passed — NO recalculation
+                    $checked = filter_var($attributes['checked'], FILTER_VALIDATE_BOOLEAN);
+                } 
+                // Fallback: auto-detect from field value
+                else {
+                    $checked = false;
+                    if ($value !== null && $value !== '') {
+                        $valueStr = (string)$value;
+                        $isTruthy = in_array(strtolower($valueStr), ['1', 'true', 'on', 'yes', 'active'], true) || $value === true;
+                        $checked = ($valueStr === $checkboxValue) || ($isTruthy && $checkboxValue === '1');
+                    }
                 }
 
+                // Set or remove attribute
                 if ($checked) {
                     $attributes['checked'] = true;
                 } else {
                     unset($attributes['checked']);
                 }
-                
+
+                // Guarantee value in HTML
+                $attributes['value'] = $checkboxValue;
+
+                // Hidden fallback
                 if ($type === 'checkbox' && empty($attributes['no_hidden'])) {
                     $input = '<input type="hidden" name="' . escape($name) . '" value="0">';
                 }
+
+                // Render
                 $input .= '<div class="form-check">';
                 $input .= '<input type="' . $type . '" ' . $this->buildAttributes($attributes) . '>';
-                if ($label) $input .= '<label class="form-check-label" for="' . $attributes['id'] . '">' . escape($label) . '</label>';
+                if ($label) $input .= '<label class="form-check-label" for="' . ($attributes['id'] ?? '') . '">' . escape($label) . '</label>';
                 if ($error) $input .= '<div class="invalid-feedback d-block">' . escape($error) . '</div>';
                 if ($help) $input .= '<div class="form-text small">' . escape($help) . '</div>';
                 $input .= '</div>';
@@ -681,7 +696,7 @@ class Form {
         $errors = [];
 
         foreach ($this->rules as $field => $ruleSet) {
-            // ✅ Normalize: array OR string → array
+            // Normalize: array OR string → array
             $rules = is_array($ruleSet) ? $ruleSet : explode('|', (string)$ruleSet);
 
             $value = $data[$field] ?? null;
@@ -876,7 +891,7 @@ class Form {
     {
         $request = $this->request();
 
-        // ✅ STEP 1: Submitted POST data — ONLY after submission
+        // STEP 1: Submitted POST data — ONLY after submission
         if ($request && $request->isPost()) {
             $posted = $request->post($name, 'raw', null);
             if ($posted !== null) {
@@ -884,7 +899,7 @@ class Form {
             }
         }
 
-        // ✅ STEP 2: Old input — ONLY after a FAILED submission
+        // STEP 2: Old input — ONLY after a FAILED submission
         // Check if THIS form was actually submitted before trusting old input
         if ($this->isSubmitted()) {
             $old = (array) $this->session->get('_old_input', []);
@@ -893,14 +908,14 @@ class Form {
             }
         }
 
-        // ✅ STEP 3: fill() values — PRIMARY source on FIRST load
+        // STEP 3: fill() values — PRIMARY source on FIRST load
         if (array_key_exists($name, $this->values)) {
             $val = $this->values[$name];
             // Return it even if null — unless you prefer fallback
             return $val ?? $fallback;
         }
 
-        // ✅ STEP 4: Explicit value attribute or default
+        // STEP 4: Explicit value attribute or default
         return $fallback;
     }
 

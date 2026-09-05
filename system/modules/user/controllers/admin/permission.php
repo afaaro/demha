@@ -43,7 +43,7 @@ class UserAdminPermission extends Controller {
                 }
 
                 Notify::success("Permissions updated successfully.");
-                redirect_to($this->url->cleanRequest('', ['id'], false));
+                redirect($this->url->cleanRequest('', ['id'], false));
                 return;
             }
 
@@ -244,10 +244,10 @@ class UserAdminPermission extends Controller {
                 }
 
                 $action = strtolower(substr($method->name, 0, -6));
-                $permission = str_replace('/', '_', $clean) . '_' . $action;
+                $permission = str_replace('/', '.', $clean) . '.' . $action;
                 $label = ucwords(str_replace(['.', '_', '-'], ' ', $permission));
 
-                $permParts = explode('_', $permission);
+                $permParts = explode('.', $permission);
                 $moduleName = $permParts[0] ?? 'other';
                 $controller = implode('.', array_slice($permParts, 1, -1));
 

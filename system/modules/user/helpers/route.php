@@ -14,18 +14,18 @@ return [
         'controller' => 'user/account',
         'action' => 'register',
         'guest' => true,
+        'permission' => 'user.account.register',
     ],
     'user/logout' => [
         'controller' => 'user/account',
         'action' => 'logout',
         'auth' => true,
-        'permission' => 'user.auth.logout',
+        'permission' => 'user.account.logout',
     ],
     'user/account' => [
         'controller' => 'user/account',
         'action' => 'index',
         'auth' => true,
-        'permission' => 'user.account.view',
     ],
     'user/account/edit' => [
         'controller' => 'user/account',
@@ -37,7 +37,6 @@ return [
         'controller' => 'user/account',
         'action' => 'password',
         'auth' => true,
-        'permission' => 'user.account.password',
     ],
 
     // Groups + permissions admin

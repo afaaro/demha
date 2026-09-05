@@ -1,7 +1,6 @@
 <?php
 
 use System\Engine\Controller;
-use System\Library\Notify;
 
 class UserAccount extends Controller {
     public function indexAction() {
@@ -135,7 +134,6 @@ class UserAccount extends Controller {
         $errors = [];
         if ($this->form->isValid()) {
             $data = $this->form->validated();
-            debug($data);
             if ($this->auth->attempt($data['identity'] ?? '', $data['password'] ?? '',$this->request->ip())) {
                 if ($next !== '') {
                     redirect_to($next);
