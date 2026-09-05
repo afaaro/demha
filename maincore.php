@@ -3,6 +3,7 @@ define('DS', str_replace('\\', '/', DIRECTORY_SEPARATOR));
 if (!defined('BASEDIR')) define("BASEDIR", strpos(getRootDirectory(), DS) === FALSE ? '' : dirname(getRootDirectory()).DS);
 define('BASEURL', get_base_url());
 
+require_once BASEDIR . 'vendor/autoload.php';
 require_once BASEDIR . 'system/engine/autoloader.php';
 $loader = new System\Engine\Autoloader();
 $loader->register('System\\Modules\\', BASEDIR . 'system/modules/');
