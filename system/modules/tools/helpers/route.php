@@ -7,6 +7,26 @@ return [
         'auth' => true,
         'permission' => 'tools.admin.setting.index',
     ],
+    'tools/admin/setting/create' => [
+        'controller' => 'tools/admin/setting',
+        'action'     => 'create',
+        'auth' => true,
+        'permission' => 'tools.admin.setting.create',
+    ],
+    'tools/admin/setting/edit' => [
+        'controller' => 'tools/admin/setting',
+        'action'     => 'edit',
+        'params'     => ['id'],
+        'auth' => true,
+        'permission' => 'tools.admin.setting.edit',
+    ],
+    'tools/admin/setting/delete' => [
+        'controller' => 'tools/admin/setting',
+        'action'     => 'delete',
+        'params'     => ['id'],
+        'auth' => true,
+        'permission' => 'tools.admin.setting.delete',
+    ],
     'tools/admin/database'  => [
         'controller' => 'tools/admin/database',
         'action' => 'index',

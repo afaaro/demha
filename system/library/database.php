@@ -367,12 +367,15 @@ class QueryResult
     public mixed $value = null;
     public array $pairs = [];
 
-    public function __construct(public string $sql = '')
-    {
-    }
+    public function __construct(public string $sql = '') {}
 
     public function affectedRows(): int
     {
         return $this->affected;
+    }
+
+    public function column(string $column): array
+    {
+        return array_column($this->rows, $column);
     }
 }

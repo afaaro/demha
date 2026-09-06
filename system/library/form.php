@@ -367,6 +367,30 @@ class Form {
     }
 
     /**
+     * Render a fieldset with legend and elements
+     */
+    public function fieldset(string $legend, array $elements, bool $useRow = false): string
+    {
+        $html = "<fieldset class=\"border p-3 mb-3 rounded\">";
+        if ($legend) {
+            $html .= "<legend class=\"fw-bold mb-2\">" . htmlspecialchars($legend) . "</legend>";
+        }
+
+        $html .= $useRow ? "<div class=\"row\">" : "";
+
+        foreach ($elements as $element) {
+            $html .= "<div class=\"" . ($useRow ? "col-md-12 mb-2" : "") . "\">";
+            $html .= $element;
+            $html .= "</div>";
+        }
+
+        $html .= $useRow ? "</div>" : "";
+        $html .= "</fieldset>";
+
+        return $html;
+    }
+
+    /**
      * Render form element — rules accept array OR pipe-separated string
      */
     public function element(string $type, array $attributes = []): string
@@ -439,14 +463,19 @@ class Form {
         switch ($type) {
             case 'textarea':
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-control');
-
                 $isEditor = !empty($attributes['editor']) && $attributes['editor'] === true;
-                $content = is_scalar($value) ? (string)$value : '';
+                
+                // ✅ Handle arrays safely
+                if (is_array($value)) {
+                    $content = json_encode($value, JSON_PRETTY_PRINT);
+                } else {
+                    $content = is_scalar($value) ? (string)$value : '';
+                }
+                
                 if (!$isEditor) {
                     $content = escape($content);
                 }
                 unset($attributes['editor']);
-
                 $input = '<textarea ' . $this->buildAttributes($attributes) . '>' . $content . '</textarea>';
                 break;
 
@@ -456,18 +485,47 @@ class Form {
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-select');
                 $selectAttrs = $attributes;
                 unset($selectAttrs['options']);
+
+                // Auto-add [] to name for multi-select
                 if ($multiple && substr($selectAttrs['name'] ?? '', -2) !== '[]') {
                     $selectAttrs['name'] .= '[]';
                 }
+
+                // ✅ NORMALIZE VALUE: JSON string → array; scalar → string
+                if ($multiple) {
+                    if (is_string($value) && str_starts_with(trim($value), '[') && str_ends_with(trim($value), ']')) {
+                        $decoded = json_decode($value, true);
+                        $value = is_array($decoded) ? $decoded : [];
+                    } elseif (!is_array($value)) {
+                        $value = $value !== '' ? [$value] : [];
+                    }
+                } else {
+                    // Single select: always string
+                    $value = is_array($value) ? json_encode($value) : (string)$value;
+                }
+
                 $input = '<select ' . $this->buildAttributes($selectAttrs) . '>';
+
+                // Placeholder option
                 if (!empty($attributes['placeholder']) && !$multiple) {
                     $input .= '<option value="">' . escape($attributes['placeholder']) . '</option>';
                 }
+
+                // ✅ Render options with proper selection check
                 foreach ($options as $optValue => $optLabel) {
-                    $selected = ($multiple && is_array($value) && in_array($optValue, $value))
-                        || (!$multiple && (string)$optValue === (string)$value) ? ' selected' : '';
-                    $input .= '<option value="' . escape($optValue) . '"' . $selected . '>' . escape($optLabel) . '</option>';
+                    $optValueStr = (string)$optValue;
+                    $isSelected = false;
+
+                    if ($multiple && is_array($value)) {
+                        $isSelected = in_array($optValueStr, array_map('strval', $value), true);
+                    } else {
+                        $isSelected = ($optValueStr === (string)$value);
+                    }
+
+                    $selected = $isSelected ? ' selected' : '';
+                    $input .= '<option value="' . escape($optValueStr) . '"' . $selected . '>' . escape($optLabel) . '</option>';
                 }
+
                 $input .= '</select>';
                 break;
 
@@ -536,7 +594,13 @@ class Form {
 
             default:
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-control');
-                $input = '<input type="' . escape($type) . '" ' . $this->buildAttributes($attributes) . ' value="' . escape((string)$value) . '">';
+                
+                // ✅ Safely convert value to string
+                $displayValue = is_array($value) ? json_encode($value) : (string)$value;
+                
+                $input = '<input type="' . escape($type) . '" ' 
+                    . $this->buildAttributes($attributes) 
+                    . ' value="' . escape($displayValue) . '">';
                 break;
         }
 
@@ -891,7 +955,7 @@ class Form {
     {
         $request = $this->request();
 
-        // STEP 1: Submitted POST data — ONLY after submission
+        // STEP 1: Submitted POST data
         if ($request && $request->isPost()) {
             $posted = $request->post($name, 'raw', null);
             if ($posted !== null) {
@@ -899,8 +963,7 @@ class Form {
             }
         }
 
-        // STEP 2: Old input — ONLY after a FAILED submission
-        // Check if THIS form was actually submitted before trusting old input
+        // STEP 2: Old input after failed submission
         if ($this->isSubmitted()) {
             $old = (array) $this->session->get('_old_input', []);
             if (array_key_exists($name, $old)) {
@@ -908,11 +971,16 @@ class Form {
             }
         }
 
-        // STEP 3: fill() values — PRIMARY source on FIRST load
+        // STEP 3: fill() values — LINE 495 IS HERE
         if (array_key_exists($name, $this->values)) {
             $val = $this->values[$name];
-            // Return it even if null — unless you prefer fallback
-            return $val ?? $fallback;
+            // FIX: safely convert array to string
+            if (is_array($val)) {
+                // For multi-select/checkbox groups: return as JSON or comma-separated
+                return json_encode($val);
+                // OR: return implode(', ', array_map('strval', $val));
+            }
+            return $val ?? $fallback; // ← Line 495 was failing here
         }
 
         // STEP 4: Explicit value attribute or default
