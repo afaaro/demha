@@ -406,9 +406,7 @@ class Form {
 
         // Register validation rules from the element
         if ($name && $rules) {
-            // Store as-is — validateData normalizes array/string automatically
             $this->rules[$name] = $rules;
-
             if ($messages) {
                 foreach ($messages as $rule => $msg) {
                     $this->messages[$name . '.' . $rule] = $msg;
@@ -464,14 +462,14 @@ class Form {
             case 'textarea':
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-control');
                 $isEditor = !empty($attributes['editor']) && $attributes['editor'] === true;
-                
-                // ✅ Handle arrays safely
+
+                // ✅ SAFELY HANDLE ARRAYS
                 if (is_array($value)) {
                     $content = json_encode($value, JSON_PRETTY_PRINT);
                 } else {
                     $content = is_scalar($value) ? (string)$value : '';
                 }
-                
+
                 if (!$isEditor) {
                     $content = escape($content);
                 }
@@ -491,17 +489,22 @@ class Form {
                     $selectAttrs['name'] .= '[]';
                 }
 
-                // ✅ NORMALIZE VALUE: JSON string → array; scalar → string
+                // ✅ NORMALIZE VALUE: decode JSON strings for multi-select
                 if ($multiple) {
-                    if (is_string($value) && str_starts_with(trim($value), '[') && str_ends_with(trim($value), ']')) {
-                        $decoded = json_decode($value, true);
-                        $value = is_array($decoded) ? $decoded : [];
+                    if (is_string($value)) {
+                        $trimmed = trim($value);
+                        if (str_starts_with($trimmed, '[') && str_ends_with($trimmed, ']')) {
+                            $decoded = json_decode($trimmed, true);
+                            $value = is_array($decoded) ? $decoded : [];
+                        } else {
+                            $value = $value !== '' ? [$value] : [];
+                        }
                     } elseif (!is_array($value)) {
                         $value = $value !== '' ? [$value] : [];
                     }
                 } else {
                     // Single select: always string
-                    $value = is_array($value) ? json_encode($value) : (string)$value;
+                    $value = is_array($value) ? implode(', ', $value) : (string)$value;
                 }
 
                 $input = '<select ' . $this->buildAttributes($selectAttrs) . '>';
@@ -541,22 +544,26 @@ class Form {
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-check-input');
 
                 // Get value
-                $checkboxValue = isset($attributes['value']) 
-                    ? (string)$attributes['value'] 
-                    : ((string)$value ?: '1');
+                $checkboxValue = isset($attributes['value'])
+                    ? (string)$attributes['value']
+                    : (is_scalar($value) ? (string)$value : '1');
 
                 // PRIORITY: Respect EXPLICIT 'checked' attribute FIRST
                 if (isset($attributes['checked'])) {
-                    // Use exactly what was passed — NO recalculation
                     $checked = filter_var($attributes['checked'], FILTER_VALIDATE_BOOLEAN);
-                } 
+                }
                 // Fallback: auto-detect from field value
                 else {
                     $checked = false;
                     if ($value !== null && $value !== '') {
-                        $valueStr = (string)$value;
-                        $isTruthy = in_array(strtolower($valueStr), ['1', 'true', 'on', 'yes', 'active'], true) || $value === true;
-                        $checked = ($valueStr === $checkboxValue) || ($isTruthy && $checkboxValue === '1');
+                        // Handle array values (checkbox groups)
+                        if (is_array($value)) {
+                            $checked = in_array($checkboxValue, array_map('strval', $value), true);
+                        } else {
+                            $valueStr = (string)$value;
+                            $isTruthy = in_array(strtolower($valueStr), ['1', 'true', 'on', 'yes', 'active'], true) || $value === true;
+                            $checked = ($valueStr === $checkboxValue) || ($isTruthy && $checkboxValue === '1');
+                        }
                     }
                 }
 
@@ -587,19 +594,17 @@ class Form {
             case 'submit':
             case 'button':
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' btn btn-primary');
-                $buttonText = $value ?: ucfirst($type);
+                $buttonText = is_scalar($value) ? (string)$value : ucfirst($type);
                 $input = '<button type="' . $type . '" ' . $this->buildAttributes($attributes) . '>' . escape($buttonText) . '</button>';
                 if ($help) $input .= '<div class="form-text small">' . escape($help) . '</div>';
                 break;
 
             default:
                 $attributes['class'] = trim(($attributes['class'] ?? '') . ' form-control');
-                
-                // ✅ Safely convert value to string
+                // ✅ SAFELY CONVERT ARRAY TO STRING
                 $displayValue = is_array($value) ? json_encode($value) : (string)$value;
-                
-                $input = '<input type="' . escape($type) . '" ' 
-                    . $this->buildAttributes($attributes) 
+                $input = '<input type="' . escape($type) . '" '
+                    . $this->buildAttributes($attributes)
                     . ' value="' . escape($displayValue) . '">';
                 break;
         }
@@ -955,7 +960,7 @@ class Form {
     {
         $request = $this->request();
 
-        // STEP 1: Submitted POST data
+        // STEP 1: Submitted POST data — keep arrays as-is
         if ($request && $request->isPost()) {
             $posted = $request->post($name, 'raw', null);
             if ($posted !== null) {
@@ -971,16 +976,13 @@ class Form {
             }
         }
 
-        // STEP 3: fill() values — LINE 495 IS HERE
+        // STEP 3: fill() values — ✅ convert arrays → JSON string
         if (array_key_exists($name, $this->values)) {
             $val = $this->values[$name];
-            // FIX: safely convert array to string
             if (is_array($val)) {
-                // For multi-select/checkbox groups: return as JSON or comma-separated
-                return json_encode($val);
-                // OR: return implode(', ', array_map('strval', $val));
+                return json_encode($val); // multi-select decodes this
             }
-            return $val ?? $fallback; // ← Line 495 was failing here
+            return $val ?? $fallback;
         }
 
         // STEP 4: Explicit value attribute or default

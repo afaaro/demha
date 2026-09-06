@@ -24,5 +24,9 @@ return [
             'label' => 'Media',
             'url' => 'tools/admin/media',
         ],
+        [
+            'label' => 'Settings',
+            'url' => 'tools/admin/setting',
+        ]
     ],
 ];

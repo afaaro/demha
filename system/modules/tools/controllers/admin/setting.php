@@ -98,7 +98,7 @@ class ToolsAdminSetting extends Controller
             echo "</div>";
 
             echo "</div>";
-        });
+        }, 'admin');
     }
 
     public function createAction(): void
