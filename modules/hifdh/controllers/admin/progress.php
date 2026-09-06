@@ -66,7 +66,7 @@ class HifdhAdminProgress extends Controller
 
             // Filter Dropdown
             $filterUrlBase = escape($this->url->to('hifdh/admin/progress', ['student_id' => $studentId]));
-            echo "<div class=\"card mb-4\"><div class=\"card-body py-2\">";
+            echo "<div class=\"card m-3\"><div class=\"card-body py-2\">";
             echo "<form method=\"get\" class=\"d-flex align-items-center gap-2\">";
             echo "<input type=\"hidden\" name=\"student_id\" value=\"{$studentId}\">";
             echo "<label class=\"fw-bold mb-0\">Filter by Type:</label>";
@@ -82,7 +82,7 @@ class HifdhAdminProgress extends Controller
             echo "</form></div></div>";
 
             // Entries Table
-            echo "<div class=\"card\"><div class=\"card-body p-0\">";
+            echo "<div class=\"card m-3 mt-0\"><div class=\"card-body p-0\">";
             echo "<table class=\"table table-striped mb-0\">";
             echo "<thead><tr><th>Date</th><th>Surah</th><th>Juz</th><th>Type</th><th>Rating</th><th>Teacher</th><th width=\"120\"></th></tr></thead><tbody>";
 

@@ -532,23 +532,18 @@ class ShopChannelManagerModel extends Model {
     /**
      * Get adapter for a channel (if needed)
      */
-    public function getAdapter(int $channelId): ?object
+    public function getAdapter($channel)
     {
-        $channel = $this->getChannel($channelId);
-        if (!$channel) {
-            return null;
-        }
-
         try {
-            // Use marketplace as adapter type if available, otherwise use type
-            $adapterType = $channel['marketplace'];
-            $adapterClass = $this->load->library("shop/adapter/{$adapterType}"); 
-            if (!$adapterClass) {
-                throw new Exception("No adapter found for channel type: {$adapterType}");
-            }
-            return new $adapterClass($channel);
+            $adapterType = !empty($channel['marketplace']) ? $channel['marketplace'] : ($channel['type'] ?? 'default');
+
+            // Pass $channel DIRECTLY to constructor
+            $adapter = $this->load->library("shop/adapter/{$adapterType}", [$channel]);
+
+            return $adapter;
+
         } catch (Exception $e) {
-            error_log("Failed to load adapter for channel {$channelId}: " . $e->getMessage());
+            error_log("Channel #" . ($channel['id'] ?? '?') . " adapter [$adapterType] failed: " . $e->getMessage());
             return null;
         }
     }

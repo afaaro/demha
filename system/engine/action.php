@@ -486,7 +486,8 @@ class Action {
             exit;
         }
 
-        echo '403 Forbidden';
+        echo '403 Forbidden <br>';
+        echo 'You tried to access a document for which you don\'t have privileges.';
         exit;
     }
 
@@ -582,69 +583,4 @@ class Action {
 
         return str_replace(['_', '-', '/'], '', ucwords($controllerPath, '_-/'));
     }
-
-    // public function scanRoutes(): array {
-    //     $routes = [];
-    //     $possibleModuleBasePaths = [
-    //         BASEDIR . 'system/modules/',
-    //         BASEDIR . 'modules/',
-    //     ];
-
-    //     foreach ($possibleModuleBasePaths as $baseDir) {
-    //         if (!is_dir($baseDir)) {
-    //             continue;
-    //         }
-
-    //         foreach (glob($baseDir . '*', GLOB_ONLYDIR) as $moduleDir) {
-    //             $module = basename($moduleDir);
-
-    //             // if (!$this->registry->get('db')->count('modules', ['slug' => $module])) {
-    //             //     continue;
-    //             // }
-
-    //             $controllersDir = $moduleDir . '/controllers';
-
-    //             if (!is_dir($controllersDir)) {
-    //                 continue;
-    //             }
-
-    //             $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($controllersDir, RecursiveDirectoryIterator::SKIP_DOTS));
-    //             foreach ($rii as $file) {
-    //                 if ($file->isDir() || $file->getExtension() !== 'php') {
-    //                     continue;
-    //                 }
-
-    //                 $classesBefore = get_declared_classes();
-    //                 require_once $file->getPathname();
-    //                 $classesAfter = get_declared_classes();
-    //                 $newClasses = array_diff($classesAfter, $classesBefore);
-
-    //                 foreach ($newClasses as $className) {
-    //                     $reflection = new ReflectionClass($className);
-
-    //                     foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-    //                         if (!str_ends_with($method->name, 'Action')) {
-    //                             continue;
-    //                         }
-
-    //                         $action = strtolower(substr($method->name, 0, -6));
-    //                         $controllerPart = preg_replace('/Controller$/', '', $reflection->getShortName());
-
-    //                         if (stripos($controllerPart, ucfirst($module)) === 0) {
-    //                             $controllerPart = substr($controllerPart, strlen($module));
-    //                         }
-
-    //                         $segments = preg_split('/(?=[A-Z])/', $controllerPart, -1, PREG_SPLIT_NO_EMPTY);
-    //                         $segments = array_map('strtolower', $segments);
-
-    //                         $route = $module . '/' . implode('/', array_values(array_filter($segments))) . '/' . $action;
-    //                         $routes[] = preg_replace('#/+#', '/', strtolower($route));
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     return array_values(array_unique($routes));
-    // }
 }

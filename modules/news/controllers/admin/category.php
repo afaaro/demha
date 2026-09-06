@@ -5,83 +5,48 @@ use System\Library\Notify;
 
 class NewsAdminCategory extends Controller
 {
+    protected $categories = [];
     protected object $model;
 
     public function __construct(Registry $registry)
     {
         parent::__construct($registry);
         $this->model = $this->load->model('news/admin/category');
+        $this->categories = $this->model->getCategories(1000, 0);
     }
 
     public function indexAction(): void
     {
-        if (!$this->auth->can('news.admin.category.view')) {
-            throw new \RuntimeException('Permission denied.', 403);
-        }
-
-        $page = (int) $this->request->get('page', 'int', 1);
-        $limit = 20;
-        $offset = ($page - 1) * $limit;
-
+        $limit = (int) $this->request->get('limit', 'int', 20);
+        $offset = (int) $this->request->get('offset', 'int', 0);
         $categories = $this->model->getCategories($limit, $offset);
-        $total = $this->model->countCategories();
+        $tree = $this->buildCategoryTree($categories);
+        $flat = $this->flattenCategoryPaths($tree);
 
-        echo $this->view->inline(function ($view) use ($categories, $total, $page, $limit) {
-            echo '<div class="d-flex justify-content-between align-items-center mb-3">';
-            echo '  <h2>News Categories</h2>';
-            echo '  <a href="' . $view->url->to('news/admin/category/create') . '" class="btn btn-primary">';
-            echo '    <i class="bi bi-plus-circle"></i> Add Category';
-            echo '  </a>';
-            echo '</div>';
+        echo $this->view->inline(function ($view) use ($flat) {
+            echo "<div class='d-flex justify-content-between mb-3'>";
+            echo "<h3>Categories</h3>";
+            echo "<a class='btn btn-primary' href='" . $view->url->to('news/admin/category/create') . "'>Add Category</a>";
+            echo "</div>";
 
-            if (count($categories) > 0) {
-                echo '<div class="table-responsive">';
-                echo '<table class="table table-striped table-hover">';
-                echo '  <thead>';
-                echo '    <tr>';
-                echo '      <th>ID</th>';
-                echo '      <th>Name</th>';
-                echo '      <th>Slug</th>';
-                echo '      <th>Description</th>';
-                echo '      <th>Parent</th>';
-                echo '      <th>Actions</th>';
-                echo '    </tr>';
-                echo '  </thead>';
-                echo '  <tbody>';
-
-                foreach ($categories as $cat) {
-                    echo '    <tr>';
-                    echo '      <td>' . (int)$cat['id'] . '</td>';
-                    echo '      <td><a href="' . $view->url->to('news/admin/category/edit', ['id' => $cat['id']]) . '">' . escape($cat['name']) . '</a></td>';
-                    echo '      <td>' . escape($cat['slug']) . '</td>';
-                    echo '      <td>' . escape(substr($cat['description'] ?? '', 0, 80)) . '</td>';
-                    echo '      <td>' . escape($cat['parent_name'] ?? '—') . '</td>';
-                    echo '      <td>';
-                    echo '        <a href="' . $view->url->to('news/admin/category/edit', ['id' => $cat['id']]) . '" class="btn btn-sm btn-outline-primary">Edit</a>';
-                    echo '        <a href="' . $view->url->to('news/admin/category/delete', ['id' => $cat['id']]) . '" class="btn btn-sm btn-outline-danger" onclick="return confirm(\'Delete this category?\')">Delete</a>';
-                    echo '      </td>';
-                    echo '    </tr>';
-                }
-
-                echo '  </tbody>';
-                echo '</table>';
-                echo '</div>';
-
-                // Pagination
-                if ($total > $limit) {
-                    echo '<nav><ul class="pagination">';
-                    $pages = ceil($total / $limit);
-                    for ($i = 1; $i <= $pages; $i++) {
-                        $active = ($i == $page) ? 'active' : '';
-                        echo '<li class="page-item ' . $active . '"><a class="page-link" href="' . $view->url->to('news/admin/category', ['page' => $i]) . '">' . $i . '</a></li>';
-                    }
-                    echo '</ul></nav>';
-                }
+            if (empty($flat)) {
+                echo "<div class='alert alert-info'>No categories found.</div>";
             } else {
-                echo '<div class="alert alert-info">No categories found. <a href="' . $view->url->to('news/admin/category/create') . '">Create one</a>.</div>';
+                echo "<ul class='list-group'>";
+                foreach ($flat as $cat) {
+                    echo "<li class='list-group-item d-flex justify-content-between align-items-center'>";
+                    echo "<span>" . htmlspecialchars($cat['path']) . "</span>";
+                    echo "<div class='btn-group'>";
+                        echo "<a class='btn btn-sm btn-outline-primary' href='" . $view->url->to('news/admin/category/edit', ['id' => $cat['id']]) . "'>Edit</a>";
+                        echo "<a class='btn btn-sm btn-outline-danger' href='" . $view->url->to('news/admin/category/delete', ['id' => $cat['id']]) . "'>Delete</a>";
+                    echo "</div>";
+                    echo "</li>";
+                }
+                echo "</ul>";
             }
         }, 'admin');
     }
+
 
     public function createAction(): void
     {
@@ -106,7 +71,7 @@ class NewsAdminCategory extends Controller
             return;
         }
 
-        $parents = $this->model->getParentOptions($id);
+        $parents = $this->getParentOptions($category['id'] ?? null);
 
         if ($this->form->isValid()) {
             $data = $this->form->validated();
@@ -158,7 +123,6 @@ class NewsAdminCategory extends Controller
 
             echo $view->form->select('parent_id', $parents, $category['parent_id'] ?? 0, [
                 'label' => 'Parent Category',
-                'placeholder' => '— None —',
             ]);
 
             echo $view->form->submit('Save', ['class' => 'btn btn-primary']);
@@ -198,5 +162,51 @@ class NewsAdminCategory extends Controller
         $slug = preg_replace('/[^a-z0-9-]+/', '-', $slug);
         $slug = trim($slug, '-');
         return $slug ?: 'category-' . time();
+    }
+
+    private function buildCategoryTree(array $categories, ?int $parentId = null): array
+    {
+        $branch = [];
+        foreach ($categories as $cat) {
+            if ((int) $cat['parent_id'] === (int) $parentId) {
+                $children = $this->buildCategoryTree($categories, (int) $cat['id']);
+                if (!empty($children)) {
+                    $cat['children'] = $children;
+                }
+                $branch[] = $cat;
+            }
+        }
+        return $branch;
+    }
+
+    private function flattenCategoryPaths(array $tree, string $prefix = ''): array
+    {
+        $result = [];
+        foreach ($tree as $cat) {
+            $fullPath = $prefix ? "$prefix → {$cat['name']}" : $cat['name'];
+            $result[] = [
+                'id'   => (int) $cat['id'],
+                'path' => $fullPath,
+            ];
+            if (!empty($cat['children'])) {
+                $result = array_merge($result, $this->flattenCategoryPaths($cat['children'], $fullPath));
+            }
+        }
+        return $result;
+    }
+
+    private function getParentOptions(?int $excludeId = null): array
+    {
+        $tree = $this->buildCategoryTree($this->categories);
+        $flat = $this->flattenCategoryPaths($tree);
+        $options = ['' => '-- None --'];
+
+        foreach ($flat as $cat) {
+            if ($excludeId !== null && (int) $cat['id'] === $excludeId) {
+                continue;
+            }
+            $options[(int) $cat['id']] = $cat['path'];
+        }
+        return $options;
     }
 }

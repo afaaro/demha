@@ -16,7 +16,7 @@ class Loader {
      * @throws \RuntimeException If file or class does not exist.
      * @return object Instantiated library object
      */
-    public function library(string $route): object
+    public function library(string $route, array $params = []): object
     {
         $parts = explode('/', $route);
         $this->validateRouteParts($parts);
@@ -36,7 +36,7 @@ class Loader {
         }
 
         // Instantiate the class (with optional dependency injection)
-        return new $className($this->registry);
+        return new $className(...$params);
     }
 
     /**

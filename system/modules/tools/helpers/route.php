@@ -1,45 +1,51 @@
 <?php
 
 return [
+    'tools/admin/setting' => [
+        'controller' => 'tools/admin/setting',
+        'action' => 'index',
+        'auth' => true,
+        'permission' => 'tools.admin.setting.index',
+    ],
     'tools/admin/database'  => [
         'controller' => 'tools/admin/database',
         'action' => 'index',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.database.index',
     ],
 
     'tools/admin/database/tables' => [
         'controller' => 'tools/admin/database',
         'action' => 'tables',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.database.index',
     ],
 
     'tools/admin/database/optimize' => [
         'controller' => 'tools/admin/database',
         'action' => 'optimize',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.database.index',
     ],
 
     'tools/admin/database/export' => [
         'controller' => 'tools/admin/database',
         'action' => 'export',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.database.index',
     ],
 
     'tools/admin/logs' => [
         'controller' => 'tools/admin/logs',
         'action' => 'index',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.logs.index',
     ],
     'tools/admin/logs/clear' => [
         'controller' => 'tools/admin/logs',
         'action' => 'clear',
         'auth' => true,
-        'permission' => 'tools.admin.database.manage',
+        'permission' => 'tools.admin.logs.clear',
     ],
 
     'tools/admin/module' => [

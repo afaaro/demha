@@ -251,11 +251,8 @@ class NewsAdminArticle extends Controller
             echo '  </div>';
 
             echo '  <div class="col-md-6">';
-            $catOptions = [];
-            foreach ($categories as $cat) {
-                $catOptions[$cat['id']] = $cat['name'];
-            }
-            echo $view->form->select('category_id', $catOptions, old_input('category_id', ''), [
+            $categoryOptions = $this->getCategoryOptions();
+            echo $view->form->select('category_id', $categoryOptions, old_input('category_id', ''), [
                 'label' => 'Category',
                 'blank' => '— Select Category —',
                 'required' => true,
@@ -415,13 +412,9 @@ class NewsAdminArticle extends Controller
             echo '  </div>';
 
             echo '  <div class="col-md-6">';
-            $catOptions = [];
-            foreach ($categories as $cat) {
-                $catOptions[$cat['id']] = $cat['name'];
-            }
-            echo $view->form->select('category_id', $catOptions, $article['category_id'], [
+            $categoryOptions = $this->getCategoryOptions();
+            echo $view->form->select('category_id', $categoryOptions, $article['category_id'], [
                 'label' => 'Category',
-                'blank' => '— Select Category —',
                 'required' => true,
             ]);
             echo '  </div>';
@@ -702,5 +695,38 @@ class NewsAdminArticle extends Controller
             echo '</table>';
             echo '</div>';
         }, 'admin');
+    }
+
+    private function getCategoryOptions(): array
+    {
+        $categories = $this->db->query("SELECT * FROM #__news_categories ORDER BY name ASC")->rows;
+        $tree = $this->buildCategoryTree($categories);
+        $options = ['' => '— None —'];
+        $this->flattenCategoryTree($tree, $options);
+        return $options;
+    }
+
+    private function buildCategoryTree(array $categories, int $parentId = 0): array
+    {
+        $branch = [];
+        foreach ($categories as $cat) {
+            if ((int)$cat['parent_id'] === $parentId) {
+                $children = $this->buildCategoryTree($categories, (int)$cat['id']);
+                if ($children) $cat['children'] = $children;
+                $branch[] = $cat;
+            }
+        }
+        return $branch;
+    }
+
+    private function flattenCategoryTree(array $tree, array &$options, int $depth = 0): void
+    {
+        $indent = str_repeat('—', $depth) . ' ';
+        foreach ($tree as $cat) {
+            $options[(int)$cat['id']] = $indent . $cat['name'];
+            if (!empty($cat['children'])) {
+                $this->flattenCategoryTree($cat['children'], $options, $depth + 1);
+            }
+        }
     }
 }
