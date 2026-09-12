@@ -248,7 +248,7 @@ return new class {
                 CREATE TABLE IF NOT EXISTS #__shop_cart_items (
                     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                     cart_id INT UNSIGNED NOT NULL,
-                    variant_id BIGINT UNSIGNED NOT NULL,
+                    variant_id BIGINT UNSIGNED NULL,
                     quantity INT UNSIGNED NOT NULL DEFAULT 1,
                     price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,

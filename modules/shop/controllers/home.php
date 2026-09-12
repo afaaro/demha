@@ -7,20 +7,19 @@ class ShopHome extends Controller
     public function indexAction(): void
     {
         $this->view->assign('title', 'Our Products');
-        $prefix = $this->db->getPrefix();
-
         $products = $this->db->query("
             SELECT p.*, 
                    c.name AS category_name,
-                   (SELECT MIN(price) FROM {$prefix}shop_product_variant WHERE product_id = p.id) AS min_price,
-                   (SELECT MAX(price) FROM {$prefix}shop_product_variant WHERE product_id = p.id) AS max_price
-            FROM {$prefix}shop_product p
-            LEFT JOIN {$prefix}shop_categories c ON c.id = p.category_id
+                   (SELECT MIN(price) FROM #__shop_product_variant WHERE product_id = p.id) AS min_price,
+                   (SELECT MAX(price) FROM #__shop_product_variant WHERE product_id = p.id) AS max_price
+            FROM #__shop_product p
+            LEFT JOIN #__shop_categories c ON c.id = p.category_id
             WHERE p.status = 'active' AND p.deleted_at IS NULL
             ORDER BY p.created_at DESC
             LIMIT 12
         ")->rows;
-
+        // ✅ DEBUG: Temporary — see what's actually loaded
+        echo '<pre style="background:#f8f9fa; padding:10px;">FOUND: ' . count($products) . ' products<br></pre>';
         $url = $this->url;
         $getPriceDisplay = fn(array $p): string => $this->getPriceDisplay($p);
 
@@ -54,7 +53,7 @@ class ShopHome extends Controller
                 }
                 echo '</div>';
             }
-        }, 'shop/shop');
+        }, 'main');
     }
 
     private function getPriceDisplay(array $product): string

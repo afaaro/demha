@@ -98,47 +98,72 @@ class ShopCart extends Controller
         }
 
         $productId = (int) $this->request->post('product_id', 'int', 0);
-        $quantity = (int) $this->request->post('quantity', 'int', 1);
+        $quantity  = (int) $this->request->post('quantity', 'int', 1);
         $variantId = (int) $this->request->post('variant_id', 'int', 0);
 
-        if ($quantity < 1) {
-            $quantity = 1;
-        }
+        if ($quantity < 1) $quantity = 1;
 
-        // Get product details with prefix
+        // ✅ Get product
         $product = $this->db->query("
-            SELECT * FROM #__shop_product WHERE id = ? AND status = 'active' AND deleted_at IS NULL
+            SELECT * FROM #__shop_product WHERE id = ? AND deleted_at IS NULL
         ", [$productId])->row;
 
         if (!$product) {
+            $msg = 'Product not available';
             if ($this->request->isAjax()) {
-                $this->json(['status' => 'error', 'message' => 'Product not available']);
+                $this->json(['status' => 'error', 'message' => $msg]);
             } else {
-                \System\Library\Notify::error('Product not available');
+                \System\Library\Notify::error($msg);
                 redirect($this->url->to('shop'));
             }
             return;
         }
 
-        // Determine price
+        // ✅ Determine price and validate variant
         $price = (float)$product['price'];
+        $validVariantId = null;
+
         if ($variantId > 0) {
             $variant = $this->db->query("
-                SELECT * FROM #__shop_product_variant WHERE id = ? AND product_id = ? AND deleted_at IS NULL
+                SELECT * FROM #__shop_product_variant 
+                WHERE id = ? AND product_id = ? AND deleted_at IS NULL
             ", [$variantId, $productId])->row;
 
-            if ($variant && $variant['price'] !== null && $variant['price'] > 0) {
-                $price = (float)$variant['price'];
-            } else {
-                // If variant exists but price is null, use product price
-                // but still continue
+            if ($variant) {
+                $validVariantId = $variantId;
+                if ($variant['price'] !== null && $variant['price'] > 0) {
+                    $price = (float)$variant['price'];
+                }
             }
         }
 
-        // Get or create cart
-        $userId = $this->auth->data('id') ?: 0;
-        $sessionId = session_id();
+        // ✅ If NO valid variant found, check if product has ANY variants
+        // If NO variants exist at all → use product price with NULL variant_id
+        if ($validVariantId === null) {
+            $anyVariant = $this->db->query("
+                SELECT id FROM #__shop_product_variant 
+                WHERE product_id = ? AND deleted_at IS NULL LIMIT 1
+            ", [$productId])->row;
 
+            if ($anyVariant) {
+                // Product has variants but none selected → error
+                $msg = 'Please select options before adding to cart.';
+                if ($this->request->isAjax()) {
+                    $this->json(['status' => 'error', 'message' => $msg]);
+                } else {
+                    \System\Library\Notify::error($msg);
+                    redirect($this->url->to('shop/product', ['id' => $productId]));
+                }
+                return;
+            }
+            // ✅ Product has NO variants at all → use NULL variant_id
+            // Requires: ALTER TABLE shop_cart_items MODIFY COLUMN variant_id BIGINT UNSIGNED NULL;
+        }
+
+        // ✅ Get or create cart
+        $userId    = $this->auth->data('id') ?: 0;
+        $sessionId = session_id();
+        
         $cart = $this->db->query("
             SELECT * FROM #__shop_cart WHERE user_id = ? AND session_id = ?
         ", [$userId, $sessionId])->row;
@@ -153,10 +178,11 @@ class ShopCart extends Controller
             $cartId = $cart['id'];
         }
 
-        // Check if item already exists (by variant_id)
+        // ✅ Check if item already exists
         $existing = $this->db->query("
-            SELECT * FROM #__shop_cart_items WHERE cart_id = ? AND variant_id = ?
-        ", [$cartId, $variantId])->row;
+            SELECT * FROM #__shop_cart_items 
+            WHERE cart_id = ? AND variant_id <=> ?
+        ", [$cartId, $validVariantId])->row;
 
         if ($existing) {
             $newQty = (int)$existing['quantity'] + $quantity;
@@ -164,13 +190,14 @@ class ShopCart extends Controller
                 UPDATE #__shop_cart_items SET quantity = ? WHERE id = ?
             ", [$newQty, $existing['id']]);
         } else {
+            // ✅ Insert with possibly NULL variant_id
             $this->db->query("
                 INSERT INTO #__shop_cart_items (cart_id, variant_id, quantity, price, added_at)
                 VALUES (?, ?, ?, ?, NOW())
-            ", [$cartId, $variantId, $quantity, $price]);
+            ", [$cartId, $validVariantId, $quantity, $price]);
         }
 
-        // Response
+        // ✅ Response
         if ($this->request->isAjax()) {
             $this->json([
                 'status' => 'success',
