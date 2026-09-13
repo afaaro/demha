@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'tools/admin/dashboard' => [
+        'controller' => 'tools/admin/dashboard',
+        'action' => 'index',
+        'auth' => true,
+        'permission' => 'tools.admin.dashboard.index',
+    ],
     'tools/admin/setting' => [
         'controller' => 'tools/admin/setting',
         'action' => 'index',

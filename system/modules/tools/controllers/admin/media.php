@@ -140,7 +140,7 @@ class ToolsAdminMedia extends Controller
         }
 
         // CSRF check
-        if (!$this->form->checkToken()) {
+        if (!$this->form->checkToken(null, 'media_upload')) {
             Notify::error('Invalid security token.');
             redirect($this->url->to('tools/admin/media'));
             return;
@@ -466,7 +466,7 @@ class ToolsAdminMedia extends Controller
         }
 
         $returnUrl = $this->url->to('tools/admin/media/picker', ['folder' => $folderId]);
-        $csrfToken = $this->form->getToken();
+        $csrfToken = $this->form->getToken('media_upload');
         echo $this->view->inline(function ($view) use ($folderId, $folders, $files, $returnUrl, $csrfToken) {
             echo '<!DOCTYPE html><html><head>';
             echo '<meta charset="UTF-8">';
@@ -492,10 +492,10 @@ class ToolsAdminMedia extends Controller
 
             // Upload form
             echo '<div class="upload-area">';
-            echo '<form method="POST" enctype="multipart/form-data" action="' . $this->url->to('tools/admin/media/upload') . '">';
+            echo '<form method="POST" enctype="multipart/form-data" action="' . $this->url->to('tools/admin/media/upload') . '" id="media_upload">';
             echo '<input type="hidden" name="folder" value="' . $folderId . '">';
             echo '<input type="hidden" name="return_url" value="' . $returnUrl . '">';
-            echo $view->form->csrfField();
+            echo $view->form->csrfField('media_upload');
             echo '<div class="row align-items-end">';
             echo '  <div class="col-md-8">';
             echo '    <label for="fileInput" class="form-label">Upload files</label>';

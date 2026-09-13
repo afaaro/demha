@@ -258,6 +258,56 @@ class Database
         ];
     }
 
+    /**
+     * Advanced pagination — supports JOINs, custom SELECT, and WHERE clauses
+     * 
+     * Usage:
+     * $db->paginateAdvanced(
+     *     "SELECT n.*, c.name AS category_name 
+     *      FROM #__news n 
+     *      LEFT JOIN #__news_categories c ON c.id = n.category_id",
+     *     "n.status = ? AND n.id != ?",
+     *     ['published', $featuredId],
+     *     $page,
+     *     10,
+     *     "n.is_featured DESC, n.created_at DESC"
+     * );
+     */
+    public function paginateAdvanced(
+        string $baseSql,      // Full SELECT + FROM + JOINs
+        string $where = '',    // WHERE conditions (without WHERE keyword)
+        array $params = [],    // Parameters for WHERE
+        int $page = 1,
+        int $perPage = 20,
+        string $order = ''
+    ): array {
+        if ($page < 1) { $page = 1; }
+        if ($perPage < 1) { $perPage = 20; }
+        $offset = ($page - 1) * $perPage;
+
+        // Build WHERE clause
+        $whereClause = $where !== '' ? ' WHERE ' . $where : '';
+
+        // Build ORDER BY
+        $orderClause = $order !== '' ? ' ORDER BY ' . $this->sanitizeOrderBy($order) : '';
+
+        // Count total rows (wrap base SQL as subquery)
+        $countSql = "SELECT COUNT(*) AS total FROM ({$baseSql}{$whereClause}) AS pager_count";
+        $totalRows = (int) $this->query($countSql, $params)->value;
+
+        // Fetch paginated rows
+        $sql = "{$baseSql}{$whereClause}{$orderClause} LIMIT ? OFFSET ?";
+        $rows = $this->query($sql, array_merge($params, [$perPage, $offset]))->rows;
+
+        return [
+            'data' => $rows,
+            'total' => $totalRows,
+            'page' => $page,
+            'per_page' => $perPage,
+            'last_page' => (int) ceil($totalRows / max($perPage, 1)),
+        ];
+    }
+    
     public function getLastId(): int
     {
         return (int) $this->pdo->lastInsertId();

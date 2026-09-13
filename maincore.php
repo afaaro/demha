@@ -163,8 +163,14 @@ function get_module_path(string $module): ?string {
 }
 
 function get_enabled_module(string $module): bool {
-    $result = registry('db')->query("SELECT `module` FROM `#__module` WHERE `installed` = 1")->rows;
-    $enabledModules = array_column($result, 'module');
+    static $enabledModules = null;
+
+    // Cache result so we only query ONCE
+    if ($enabledModules === null) {
+        $rows =  registry('db')->query("SELECT `module` FROM `#__module` WHERE `installed` = 1")->rows;
+        $enabledModules = array_column($rows, 'module');
+    }
+
     return in_array($module, $enabledModules, true);
 }
 
