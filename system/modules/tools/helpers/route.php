@@ -92,31 +92,29 @@ return [
         'auth' => true,
         'permission' => 'tools.admin.module.upgrade',
     ],
+
+    // Blocks
     'tools/admin/block' => [
         'controller' => 'tools/admin/block',
-        'action' => 'index',
+        'action'     => 'index',
         'auth' => true,
-        'permission' => 'tools.admin.block.manage',
     ],
     'tools/admin/block/create' => [
         'controller' => 'tools/admin/block',
-        'action' => 'create',
+        'action'     => 'create',
         'auth' => true,
-        'permission' => 'tools.admin.block.create',
     ],
     'tools/admin/block/edit' => [
         'controller' => 'tools/admin/block',
-        'action' => 'edit',
-        'params' => ['id'],
+        'action'     => 'edit',
+        'params'     => ['id'],
         'auth' => true,
-        'permission' => 'tools.admin.block.edit',
     ],
     'tools/admin/block/delete' => [
         'controller' => 'tools/admin/block',
-        'action' => 'delete',
-        'params' => ['id'],
+        'action'     => 'delete',
+        'params'     => ['id'],
         'auth' => true,
-        'permission' => 'tools.admin.block.delete',
     ],
 
     // Admin Media routes

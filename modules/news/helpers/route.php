@@ -19,7 +19,11 @@ return [
         'params' => ['slug'],
         'public' => true,
     ],
-
+    'news/tag' => [
+        'controller' => 'news/tag',
+        'action'     => 'index',
+        'params'     => ['slug'],
+    ],
     // Admin - Categories
     'news/admin/category' => [
         'controller' => 'news/admin/category',

@@ -308,24 +308,32 @@ function old_input(string $key, mixed $default = ''): mixed {
 /**
  * Recursively escapes a value for safe HTML output.
  */
-function escape(mixed $value): mixed {
+function escape(mixed $value, string $encoding = 'UTF-8'): mixed {
     if (is_array($value)) {
         return array_map('escape', $value);
     }
 
     if (is_object($value)) {
         // Objects can be cast to arrays or handled via method calls
-        return method_exists($value, '__toString') ? htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') : '[Object]';
+        return method_exists($value, '__toString') ? htmlspecialchars((string)$value, ENT_QUOTES, $encoding) : '[Object]';
     }
 
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string)$value, ENT_QUOTES, $encoding);
 }
 
-function truncate(string $text, int $length = 100, string $suffix = '...'): string {
-    if (mb_strlen($text, 'UTF-8') <= $length) {
-        return $text;
+function truncate(?string $text, int $maxLength = 180, string $suffix = '…', string $encoding = 'UTF-8'): string {
+    // 1. Safely handle null/empty + strip ALL HTML tags
+    $clean = strip_tags((string)($text ?? ''));
+    
+    // 2. Decode HTML entities properly (quotes, symbols, etc.)
+    $clean = html_entity_decode($clean, ENT_QUOTES | ENT_HTML5, $encoding);
+    
+    // 3. Safe multi-byte truncation — works with Somali, Arabic, etc.
+    if (mb_strlen($clean, $encoding) > $maxLength) {
+        $clean = rtrim(mb_substr($clean, 0, $maxLength, $encoding)) . $suffix;
     }
-    return mb_substr($text, 0, $length, 'UTF-8') . $suffix;
+    
+    return $clean;
 }
 
 #####################################################

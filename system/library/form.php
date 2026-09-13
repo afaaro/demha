@@ -676,26 +676,54 @@ class Form {
                 if (typeof tinymce === "undefined") return;
                 tinymce.init({
                     selector: 'textarea.js-tinymce-editor',
-                    height: 350,
+                    height: 400,
                     menubar: false,
-                    plugins: 'link lists code table',
-                    toolbar: 'undo redo | blocks | bold italic | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | removeformat | code',
+                    // ✅ ADDED: image plugin + media button
+                    plugins: 'link image lists code table',
+                    // ✅ ADDED: 'media' to toolbar so button appears!
+                    toolbar: 'undo redo | bold italic | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link image media | code removeformat',
                     skin: 'oxide',
                     content_css: 'default',
+                    // ✅ Allow iframe/image tags
+                    extended_valid_elements: 'iframe[src|width|height|frameborder|allowfullscreen],img[src|alt|width|height]',
                     setup: function(editor) {
+                        // ✅ Register Media Picker button
                         editor.ui.registry.addButton('media', {
                             text: 'Media',
                             icon: 'image',
+                            tooltip: 'Insert Media',
                             onAction: function() {
                                 editor.windowManager.open({
                                     title: 'Media Picker',
-                                    width: 800,
+                                    width: 850,
                                     height: 600,
-                                    body: { type: 'panel', items: [
-                                        { type: 'htmlpanel', html: '<iframe src="{$pickerUrl}" style="width:100%;height:100%;border:0;"></iframe>' }
-                                    ]},
-                                    buttons: [ { type: 'cancel', text: 'Close' } ]
+                                    body: {
+                                        type: 'panel',
+                                        items: [
+                                            { 
+                                                type: 'htmlpanel', 
+                                                html: '<iframe src="{$pickerUrl}" style="width:100%;height:520px;border:0;"></iframe>' 
+                                            }
+                                        ]
+                                    },
+                                    buttons: [
+                                        { type: 'cancel', text: 'Close' }
+                                    ]
                                 });
+                            }
+                        });
+
+                        // ✅ Listen for message from media picker iframe
+                        window.addEventListener('message', function(e) {
+                            if (e.data && e.data.type === 'tinymce-insert-media') {
+                                const url = e.data.url;
+                                const alt = e.data.alt || '';
+                                if (e.data.html) {
+                                    editor.insertContent(e.data.html);
+                                } else if (url) {
+                                    editor.insertContent('<img src="' + url + '" alt="' + alt + '" />');
+                                }
+                                editor.windowManager.close();
                             }
                         });
                     }
